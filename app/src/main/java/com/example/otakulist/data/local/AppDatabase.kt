@@ -8,6 +8,7 @@ import com.example.otakulist.data.local.dao.AnimeDao
 import com.example.otakulist.data.local.dao.WatchlistDao
 import com.example.otakulist.data.local.entity.AnimeEntity
 import com.example.otakulist.data.local.entity.UserWatchlistEntity
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -43,6 +44,15 @@ abstract class AppDatabase : RoomDatabase() {
             )
                 .createFromAsset(ASSET_DATABASE_PATH)
                 .fallbackToDestructiveMigration(dropAllTables = true)
+                .addCallback(object : RoomDatabase.Callback() {
+                    override fun onOpen(db: SupportSQLiteDatabase) {
+                        super.onOpen(db)
+                        try {
+                            db.execSQL("UPDATE anime SET cover_file = replace(cover_file, '.jpg', '.webp') WHERE cover_file LIKE '%.jpg'")
+                        } catch (_: Exception) {
+                        }
+                    }
+                })
                 .build()
         }
     }

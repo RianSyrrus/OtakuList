@@ -32,7 +32,8 @@ fun AnimeCoverImage(
 ) {
     val context = LocalContext.current
     val imagePath = if (!coverFile.isNullOrBlank()) {
-        "file:///android_asset/covers/$coverFile"
+        val baseName = coverFile.trim().substringBeforeLast(".")
+        "file:///android_asset/covers/$baseName.webp"
     } else {
         null
     }
@@ -41,6 +42,11 @@ fun AnimeCoverImage(
         model = ImageRequest.Builder(context)
             .data(imagePath)
             .crossfade(true)
+            .listener(
+                onError = { _, result ->
+                    android.util.Log.e("AnimeCoverImage", "Failed to load $imagePath: ${result.throwable.message}")
+                }
+            )
             .build(),
         contentDescription = contentDescription,
         contentScale = contentScale,
