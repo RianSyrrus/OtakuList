@@ -31,5 +31,24 @@ data class AnimeEntity(
     @ColumnInfo(name = "otak_url")
     val otakUrl: String? = null,
     @ColumnInfo(name = "created_at")
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    @ColumnInfo(name = "related_anime")
+    val relatedAnime: String? = null
 )
+
+data class RelatedAnimeItem(
+    val id: Int,
+    val title: String,
+    val type: String? = null
+)
+
+fun AnimeEntity.getParsedRelatedAnime(): List<RelatedAnimeItem> {
+    if (relatedAnime.isNullOrBlank() || relatedAnime == "[]") return emptyList()
+    return try {
+        val listType = object : com.google.gson.reflect.TypeToken<List<RelatedAnimeItem>>() {}.type
+        com.google.gson.Gson().fromJson(relatedAnime, listType) ?: emptyList()
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+

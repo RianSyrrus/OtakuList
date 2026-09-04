@@ -21,9 +21,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apartment
+import androidx.compose.material.icons.filled.AutoAwesomeMotion
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -73,7 +75,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.otakulist.data.local.entity.AnimeEntity
+import com.example.otakulist.data.local.entity.RelatedAnimeItem
 import com.example.otakulist.data.local.entity.UserWatchlistEntity
+import com.example.otakulist.data.local.entity.getParsedRelatedAnime
 import com.example.otakulist.data.model.WatchlistStatus
 import com.example.otakulist.ui.components.AnimeCoverImage
 import com.example.otakulist.ui.components.KuroTrackDetailTopBar
@@ -107,6 +111,7 @@ import com.example.otakulist.ui.theme.Typography
 fun DetailScreen(
     viewModel: DetailViewModel,
     onBackClick: () -> Unit,
+    onAnimeClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val anime by viewModel.anime.collectAsState()
@@ -188,6 +193,16 @@ fun DetailScreen(
                 // 6. Synopsis Card
                 if (!item.synopsis.isNullOrBlank()) {
                     SynopsisSection(synopsis = item.synopsis)
+                    Spacer(modifier = Modifier.height(Dimens.spacingLg))
+                }
+
+                // 6.5. Anime Terkait (Related Anime)
+                val relatedList = item.getParsedRelatedAnime()
+                if (relatedList.isNotEmpty()) {
+                    RelatedAnimeSection(
+                        relatedList = relatedList,
+                        onAnimeClick = onAnimeClick
+                    )
                     Spacer(modifier = Modifier.height(Dimens.spacingLg))
                 }
 
@@ -786,5 +801,99 @@ private fun InfoCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun RelatedAnimeSection(
+    relatedList: List<RelatedAnimeItem>,
+    onAnimeClick: (Int) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Dimens.marginScreen)
+            .clip(CardShape)
+            .background(SurfaceBase)
+            .padding(Dimens.spacingMd),
+        verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CompactButtonShape)
+                    .background(SurfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesomeMotion,
+                    contentDescription = null,
+                    tint = StatusWatching,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Text(
+                text = "Anime Terkait",
+                style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = OnSurface
+            )
+            Text(
+                text = "(${relatedList.size})",
+                style = Typography.labelSmall.copy(fontSize = 11.sp),
+                color = OnSurfaceMuted
+            )
+        }
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            relatedList.forEach { related ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SurfaceContainer)
+                        .border(1.dp, Outline.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .clickable { onAnimeClick(related.id) }
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (!related.type.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(StatusWatching.copy(alpha = 0.18f))
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = related.type,
+                                    style = Typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = StatusWatching
+                                )
+                            }
+                        }
+                        Text(
+                            text = related.title,
+                            style = Typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = OnSurface
+                        )
+                    }
+                }
+            }
+        }
     }
 }

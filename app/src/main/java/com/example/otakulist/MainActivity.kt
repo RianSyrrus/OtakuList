@@ -134,7 +134,10 @@ class MainActivity : ComponentActivity() {
                             )
                             DetailScreen(
                                 viewModel = detailViewModel,
-                                onBackClick = { navController.popBackStack() }
+                                onBackClick = { navController.popBackStack() },
+                                onAnimeClick = { targetId ->
+                                    navController.navigate("detail/$targetId")
+                                }
                             )
                         }
                     }
