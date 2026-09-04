@@ -200,6 +200,7 @@ fun DetailScreen(
                 val relatedList = item.getParsedRelatedAnime()
                 if (relatedList.isNotEmpty()) {
                     RelatedAnimeSection(
+                        currentAnimeId = item.id,
                         relatedList = relatedList,
                         onAnimeClick = onAnimeClick
                     )
@@ -806,6 +807,7 @@ private fun InfoCard(
 
 @Composable
 private fun RelatedAnimeSection(
+    currentAnimeId: Int,
     relatedList: List<RelatedAnimeItem>,
     onAnimeClick: (Int) -> Unit
 ) {
@@ -854,12 +856,17 @@ private fun RelatedAnimeSection(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             relatedList.forEach { related ->
+                val isCurrent = related.id == currentAnimeId
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(SurfaceContainer)
-                        .border(1.dp, Outline.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                        .clickable { onAnimeClick(related.id) }
+                        .background(if (isCurrent) StatusWatching.copy(alpha = 0.15f) else SurfaceContainer)
+                        .border(
+                            width = 1.dp,
+                            color = if (isCurrent) StatusWatching else Outline.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .clickable(enabled = !isCurrent) { onAnimeClick(related.id) }
                         .padding(horizontal = 10.dp, vertical = 7.dp)
                 ) {
                     Row(
@@ -870,7 +877,7 @@ private fun RelatedAnimeSection(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(StatusWatching.copy(alpha = 0.18f))
+                                    .background(if (isCurrent) StatusWatching else StatusWatching.copy(alpha = 0.18f))
                                     .padding(horizontal = 5.dp, vertical = 2.dp)
                             ) {
                                 Text(
@@ -879,7 +886,7 @@ private fun RelatedAnimeSection(
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold
                                     ),
-                                    color = StatusWatching
+                                    color = if (isCurrent) OnBackground else StatusWatching
                                 )
                             }
                         }
@@ -887,9 +894,9 @@ private fun RelatedAnimeSection(
                             text = related.title,
                             style = Typography.bodySmall.copy(
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
                             ),
-                            color = OnSurface
+                            color = if (isCurrent) StatusWatching else OnSurface
                         )
                     }
                 }

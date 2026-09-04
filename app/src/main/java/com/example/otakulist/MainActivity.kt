@@ -136,7 +136,14 @@ class MainActivity : ComponentActivity() {
                                 viewModel = detailViewModel,
                                 onBackClick = { navController.popBackStack() },
                                 onAnimeClick = { targetId ->
-                                    navController.navigate("detail/$targetId")
+                                    if (targetId != animeId) {
+                                        navController.navigate("detail/$targetId") {
+                                            popUpTo("detail/{animeId}") {
+                                                inclusive = true
+                                            }
+                                            launchSingleTop = true
+                                        }
+                                    }
                                 }
                             )
                         }
