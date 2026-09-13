@@ -10,6 +10,8 @@
 
 # Models and Serialization / Gson
 -keep class com.example.otakulist.data.model.** { *; }
+-keep class com.example.otakulist.data.model.WatchlistBackupModel { *; }
+-keepclassmembers class com.example.otakulist.data.model.WatchlistBackupModel { *; }
 -keepclassmembers class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }

@@ -45,4 +45,7 @@ interface AdultAnimeDao {
 
     @Query("SELECT DISTINCT status FROM adult_anime WHERE status IS NOT NULL AND status != '' ORDER BY status ASC")
     fun getAllStatuses(): Flow<List<String>>
+
+    @Query("SELECT id FROM adult_anime")
+    suspend fun getAllAdultIds(): List<Int>
 }

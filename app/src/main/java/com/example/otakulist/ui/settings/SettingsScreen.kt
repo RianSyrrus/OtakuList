@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,10 +30,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Dataset
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.OfflineBolt
@@ -62,6 +66,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,7 +78,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.otakulist.BuildConfig
+import com.example.otakulist.R
 import com.example.otakulist.data.local.AppThemeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.example.otakulist.ui.components.OtakuTopBar
 import com.example.otakulist.ui.theme.AccentPresets
 import com.example.otakulist.ui.theme.CanvasBackground
@@ -114,9 +126,61 @@ fun SettingsScreen(
     var showImportDialog by remember { mutableStateOf(false) }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var showCustomColorDialog by remember { mutableStateOf(false) }
+    var showExportChoiceDialog by remember { mutableStateOf(false) }
+    var showImportChoiceDialog by remember { mutableStateOf(false) }
     var importInputText by remember { mutableStateOf("") }
 
+    val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val jsonString = viewModel.getExportJsonString()
+                    context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                        writer.write(jsonString)
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, context.getString(R.string.backup_file_saved), Toast.LENGTH_SHORT).show()
+                    }
+                } catch (_: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, context.getString(R.string.backup_file_save_failed), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    val importFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val jsonString = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                        reader.readText()
+                    }
+                    if (!jsonString.isNullOrBlank()) {
+                        withContext(Dispatchers.Main) {
+                            viewModel.importWatchlist(jsonString)
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, context.getString(R.string.backup_file_read_failed), Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (_: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, context.getString(R.string.backup_file_read_failed), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(actionFeedback) {
         actionFeedback?.let { msg ->
@@ -454,8 +518,8 @@ fun SettingsScreen(
                 SettingsActionRow(
                     icon = Icons.Default.FileDownload,
                     title = "Cadangkan Data (Ekspor JSON)",
-                    subtitle = "Simpan salinan seluruh entri watchlist ke format JSON",
-                    onClick = { viewModel.exportWatchlist() }
+                    subtitle = "Simpan salinan seluruh entri watchlist ke format JSON atau berkas",
+                    onClick = { showExportChoiceDialog = true }
                 )
 
                 HorizontalDivider(
@@ -467,11 +531,8 @@ fun SettingsScreen(
                 SettingsActionRow(
                     icon = Icons.Default.FileUpload,
                     title = "Pulihkan Data (Impor JSON)",
-                    subtitle = "Kembalikan entri watchlist dari salinan berkas cadangan JSON",
-                    onClick = {
-                        importInputText = ""
-                        showImportDialog = true
-                    }
+                    subtitle = "Kembalikan entri watchlist dari berkas fisik atau kode clipboard",
+                    onClick = { showImportChoiceDialog = true }
                 )
 
                 HorizontalDivider(
@@ -566,6 +627,252 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+
+    // Export Choice Dialog
+    if (showExportChoiceDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportChoiceDialog = false },
+            containerColor = OtakuTheme.colors.surfaceBase,
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Text(
+                    text = "Metode Cadangkan Data",
+                    style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = OtakuTheme.colors.onSurface
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)) {
+                    Text(
+                        text = "Pilih cara menyimpan salinan data watchlist Anda:",
+                        style = Typography.bodySmall,
+                        color = OtakuTheme.colors.onSurfaceMuted
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Opsi 1: Simpan Berkas JSON
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(OtakuTheme.colors.surfaceVariant)
+                            .clickable {
+                                showExportChoiceDialog = false
+                                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                                exportLauncher.launch("OtakuList_v${BuildConfig.VERSION_NAME}_Backup_${timestamp}.json")
+                            }
+                            .padding(Dimens.spacingMd)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = OtakuTheme.colors.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Simpan Berkas JSON (.json)",
+                                    style = Typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = OtakuTheme.colors.onSurface
+                                )
+                                Text(
+                                    text = "Simpan ke Unduhan, Dokumen, atau Cloud",
+                                    style = Typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    color = OtakuTheme.colors.onSurfaceMuted
+                                )
+                            }
+                        }
+                    }
+
+                    // Opsi 2: Salin Teks ke Clipboard
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(OtakuTheme.colors.surfaceVariant)
+                            .clickable {
+                                showExportChoiceDialog = false
+                                viewModel.exportWatchlist()
+                            }
+                            .padding(Dimens.spacingMd)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                tint = OtakuTheme.colors.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Salin Teks ke Clipboard",
+                                    style = Typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = OtakuTheme.colors.onSurface
+                                )
+                                Text(
+                                    text = "Salin teks JSON atau bagikan ke aplikasi lain",
+                                    style = Typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    color = OtakuTheme.colors.onSurfaceMuted
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showExportChoiceDialog = false }) {
+                    Text(text = "Batal", color = OtakuTheme.colors.onSurfaceMuted)
+                }
+            }
+        )
+    }
+
+    // Import Choice Dialog
+    if (showImportChoiceDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportChoiceDialog = false },
+            containerColor = OtakuTheme.colors.surfaceBase,
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Text(
+                    text = "Metode Pemulihan Data",
+                    style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = OtakuTheme.colors.onSurface
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)) {
+                    Text(
+                        text = "Pilih sumber data cadangan yang ingin dipulihkan:",
+                        style = Typography.bodySmall,
+                        color = OtakuTheme.colors.onSurfaceMuted
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Opsi 1: Pilih Berkas JSON
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(OtakuTheme.colors.surfaceVariant)
+                            .clickable {
+                                showImportChoiceDialog = false
+                                importFileLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                            }
+                            .padding(Dimens.spacingMd)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = OtakuTheme.colors.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Pilih Berkas JSON (.json)",
+                                    style = Typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = OtakuTheme.colors.onSurface
+                                )
+                                Text(
+                                    text = "Pilih file cadangan dari memori atau Cloud",
+                                    style = Typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    color = OtakuTheme.colors.onSurfaceMuted
+                                )
+                            }
+                        }
+                    }
+
+                    // Opsi 2: Tempel Teks Clipboard
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(OtakuTheme.colors.surfaceVariant)
+                            .clickable {
+                                showImportChoiceDialog = false
+                                importInputText = ""
+                                showImportDialog = true
+                            }
+                            .padding(Dimens.spacingMd)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentPaste,
+                                contentDescription = null,
+                                tint = OtakuTheme.colors.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Tempel Teks dari Clipboard",
+                                    style = Typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = OtakuTheme.colors.onSurface
+                                )
+                                Text(
+                                    text = "Masukkan teks JSON cadangan secara manual",
+                                    style = Typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    color = OtakuTheme.colors.onSurfaceMuted
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showImportChoiceDialog = false }) {
+                    Text(text = "Batal", color = OtakuTheme.colors.onSurfaceMuted)
+                }
+            }
+        )
+    }
+
+    // Import Result Summary Dialog
+    importMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissImportMessage() },
+            containerColor = OtakuTheme.colors.surfaceBase,
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Text(
+                    text = "Status Pemulihan Data",
+                    style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = OtakuTheme.colors.onSurface
+                )
+            },
+            text = {
+                Text(
+                    text = msg,
+                    style = Typography.bodyMedium,
+                    color = OtakuTheme.colors.onSurface
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.dismissImportMessage() },
+                    colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.primary, contentColor = Color.White),
+                    shape = CompactButtonShape
+                ) {
+                    Text(text = "Tutup", style = Typography.labelMedium)
+                }
+            }
+        )
     }
 
     // Export Dialog

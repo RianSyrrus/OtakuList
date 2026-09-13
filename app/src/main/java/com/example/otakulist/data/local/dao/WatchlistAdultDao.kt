@@ -32,6 +32,9 @@ interface WatchlistAdultDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertWatchlist(entry: UserWatchlistAdultEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entries: List<UserWatchlistAdultEntity>)
+
     @Query("UPDATE user_watchlist_adult SET current_episode = :episode, updated_at = :updatedAt WHERE anime_id = :animeId")
     suspend fun updateEpisode(animeId: Int, episode: Int, updatedAt: Long = System.currentTimeMillis())
 

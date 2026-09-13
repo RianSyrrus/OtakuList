@@ -60,13 +60,21 @@ class SettingsViewModel(
 
     fun clearAllWatchlist() {
         viewModelScope.launch {
-            repository.clearWatchlist()
-            _actionFeedback.value = "Seluruh entri watchlist berhasil dikosongkan."
+            val result = repository.clearAllWatchlist()
+            if (result.isSuccess) {
+                _actionFeedback.value = "Seluruh entri watchlist berhasil dikosongkan."
+            } else {
+                _actionFeedback.value = "Gagal mengosongkan watchlist."
+            }
         }
     }
 
     fun dismissFeedback() {
         _actionFeedback.value = null
+    }
+
+    suspend fun getExportJsonString(): String {
+        return repository.exportWatchlistJson()
     }
 
     fun exportWatchlist() {

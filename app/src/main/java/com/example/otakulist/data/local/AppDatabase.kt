@@ -271,24 +271,6 @@ abstract class AppDatabase : RoomDatabase() {
                             FROM asset_db.adult_anime
                         """.trimIndent())
 
-                        db.execSQL("""
-                            INSERT OR REPLACE INTO user_watchlist (
-                                anime_id, status, current_episode, personal_score, personal_note, updated_at
-                            )
-                            SELECT 
-                                anime_id, status, current_episode, personal_score, personal_note, updated_at
-                            FROM asset_db.user_watchlist
-                        """.trimIndent())
-
-                        db.execSQL("""
-                            INSERT OR REPLACE INTO user_watchlist_adult (
-                                anime_id, status, current_episode, personal_score, personal_note, updated_at
-                            )
-                            SELECT 
-                                anime_id, status, current_episode, personal_score, personal_note, updated_at
-                            FROM asset_db.user_watchlist_adult
-                        """.trimIndent())
-
                         db.execSQL("DETACH DATABASE asset_db")
                         prefs.edit().putInt("synced_catalog_version", CURRENT_CATALOG_SYNC_VERSION).apply()
                     } finally {

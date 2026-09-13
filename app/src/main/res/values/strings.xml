@@ -1,4 +1,11 @@
 <resources>
     <string name="app_name">Otaku List</string>
-    <string name="press_again_to_exit">Tekan sekali lagi untuk keluar</string>
+    <string name="press_again_to_exit">Press back again to exit</string>
+    <string name="export_save_file">Save JSON File (.json)</string>
+    <string name="export_copy_clipboard">Copy Text to Clipboard</string>
+    <string name="import_select_file">Select JSON File (.json)</string>
+    <string name="import_paste_clipboard">Paste Text from Clipboard</string>
+    <string name="backup_file_saved">Backup file saved successfully!</string>
+    <string name="backup_file_save_failed">Failed to save backup file.</string>
+    <string name="backup_file_read_failed">Failed to read selected JSON file.</string>
 </resources>

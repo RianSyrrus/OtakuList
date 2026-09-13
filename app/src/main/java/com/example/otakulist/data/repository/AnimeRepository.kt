@@ -1,6 +1,8 @@
 package com.example.otakulist.data.repository
 
+import androidx.room.withTransaction
 import androidx.sqlite.db.SimpleSQLiteQuery
+import com.example.otakulist.data.local.AppDatabase
 import com.example.otakulist.data.local.AppSettingsManager
 import com.example.otakulist.data.local.dao.AdultAnimeDao
 import com.example.otakulist.data.local.dao.AnimeDao
@@ -13,8 +15,10 @@ import com.example.otakulist.data.local.entity.UserWatchlistEntity
 import com.example.otakulist.data.local.entity.WatchlistWithAnime
 import com.example.otakulist.data.local.entity.toAnimeEntity
 import com.example.otakulist.data.model.AnimeSortOrder
+import com.example.otakulist.data.model.WatchlistBackupModel
 import com.example.otakulist.data.model.WatchlistStatus
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -23,16 +27,6 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-
-data class WatchlistBackupModel(
-    val animeId: Int,
-    val status: String,
-    val currentEpisode: Int,
-    val personalScore: Int,
-    val personalNote: String,
-    val updatedAt: Long,
-    val isAdult: Boolean = false
-)
 
 data class StatsModel(
     val totalWatchedTitles: Int = 0,
@@ -54,12 +48,13 @@ data class StatsModel(
 )
 
 class AnimeRepository(
+    private val database: AppDatabase,
     private val animeDao: AnimeDao,
     private val watchlistDao: WatchlistDao,
     private val adultAnimeDao: AdultAnimeDao,
     private val watchlistAdultDao: WatchlistAdultDao,
     val settingsManager: AppSettingsManager,
-    private val gson: Gson = Gson()
+    private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
 ) {
 
     fun getAllAnime(isAdult: Boolean = false): Flow<List<AnimeEntity>> = 
@@ -451,12 +446,22 @@ class AnimeRepository(
     suspend fun importWatchlistJson(json: String): Result<Int> {
         return runCatching {
             val type = object : TypeToken<List<WatchlistBackupModel>>() {}.type
-            val list: List<WatchlistBackupModel> = gson.fromJson(json, type)
-            var count = 0
+            val list: List<WatchlistBackupModel> = gson.fromJson(json, type) ?: emptyList()
+            if (list.isEmpty()) return@runCatching 0
+
+            val adultIdSet = adultAnimeDao.getAllAdultIds().toSet()
+            val regularEntities = ArrayList<UserWatchlistEntity>(list.size)
+            val adultEntities = ArrayList<UserWatchlistAdultEntity>()
+
             for (item in list) {
-                val targetIsAdult = resolveIsAdult(item.animeId, item.isAdult)
-                if (targetIsAdult) {
-                    watchlistAdultDao.upsertWatchlist(
+                val isAdult = if (item.isAdult) {
+                    true
+                } else {
+                    adultIdSet.contains(item.animeId)
+                }
+
+                if (isAdult) {
+                    adultEntities.add(
                         UserWatchlistAdultEntity(
                             animeId = item.animeId,
                             status = item.status,
@@ -467,7 +472,7 @@ class AnimeRepository(
                         )
                     )
                 } else {
-                    watchlistDao.upsertWatchlist(
+                    regularEntities.add(
                         UserWatchlistEntity(
                             animeId = item.animeId,
                             status = item.status,
@@ -478,9 +483,26 @@ class AnimeRepository(
                         )
                     )
                 }
-                count++
             }
-            count
+
+            database.withTransaction {
+                if (regularEntities.isNotEmpty()) {
+                    watchlistDao.upsertAll(regularEntities)
+                }
+                if (adultEntities.isNotEmpty()) {
+                    watchlistAdultDao.upsertAll(adultEntities)
+                }
+            }
+            list.size
+        }
+    }
+
+    suspend fun clearAllWatchlist(): Result<Unit> {
+        return runCatching {
+            database.withTransaction {
+                watchlistDao.clearAll()
+                watchlistAdultDao.clearAll()
+            }
         }
     }
 
@@ -489,8 +511,10 @@ class AnimeRepository(
             true -> watchlistAdultDao.clearAll()
             false -> watchlistDao.clearAll()
             null -> {
-                watchlistDao.clearAll()
-                watchlistAdultDao.clearAll()
+                database.withTransaction {
+                    watchlistDao.clearAll()
+                    watchlistAdultDao.clearAll()
+                }
             }
         }
     }
