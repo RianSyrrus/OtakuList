@@ -15,17 +15,18 @@ import kotlinx.coroutines.launch
 
 class DetailViewModel(
     private val animeId: Int,
+    val isAdult: Boolean = false,
     private val repository: AnimeRepository
 ) : ViewModel() {
 
-    val anime: StateFlow<AnimeEntity?> = repository.getAnimeById(animeId)
+    val anime: StateFlow<AnimeEntity?> = repository.getAnimeById(animeId, isAdult)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = null
         )
 
-    val watchlistEntry: StateFlow<UserWatchlistEntity?> = repository.getWatchlistEntry(animeId)
+    val watchlistEntry: StateFlow<UserWatchlistEntity?> = repository.getWatchlistEntry(animeId, isAdult)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -47,7 +48,8 @@ class DetailViewModel(
                 status = status,
                 currentEpisode = 0,
                 personalScore = 0,
-                personalNote = ""
+                personalNote = "",
+                isAdult = isAdult
             )
         }
     }
@@ -60,59 +62,33 @@ class DetailViewModel(
                 status = status,
                 currentEpisode = current.currentEpisode,
                 personalScore = current.personalScore,
-                personalNote = current.personalNote
+                personalNote = current.personalNote,
+                isAdult = isAdult
             )
         }
     }
 
     fun toggleStatus() {
         viewModelScope.launch {
-            repository.toggleWatchlistStatus(animeId)
-        }
-    }
-
-
-    fun updateScore(score: Int) {
-        viewModelScope.launch {
-            val current = watchlistEntry.value ?: return@launch
-            val newScore = if (current.personalScore == score) 0 else score
-            repository.saveToWatchlist(
-                animeId = animeId,
-                status = WatchlistStatus.fromValue(current.status),
-                currentEpisode = current.currentEpisode,
-                personalScore = newScore,
-                personalNote = current.personalNote
-            )
-        }
-    }
-
-    fun updateNote(note: String) {
-        viewModelScope.launch {
-            val current = watchlistEntry.value ?: return@launch
-            repository.saveToWatchlist(
-                animeId = animeId,
-                status = WatchlistStatus.fromValue(current.status),
-                currentEpisode = current.currentEpisode,
-                personalScore = current.personalScore,
-                personalNote = note
-            )
+            repository.toggleWatchlistStatus(animeId, isAdult)
         }
     }
 
     fun removeFromWatchlist() {
         viewModelScope.launch {
-            repository.removeFromWatchlist(animeId)
+            repository.removeFromWatchlist(animeId, isAdult)
         }
     }
 
     class Factory(
         private val animeId: Int,
+        private val isAdult: Boolean = false,
         private val repository: AnimeRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(DetailViewModel::class.java)) {
-                return DetailViewModel(animeId, repository) as T
+                return DetailViewModel(animeId, isAdult, repository) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }

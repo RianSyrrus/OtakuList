@@ -1,19 +1,31 @@
 package com.example.otakulist.ui.detail
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,22 +39,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apartment
 import androidx.compose.material.icons.filled.AutoAwesomeMotion
 import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.PlaylistAdd
-import androidx.compose.material.icons.filled.RateReview
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tag
@@ -52,6 +59,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -78,9 +86,11 @@ import com.example.otakulist.data.local.entity.AnimeEntity
 import com.example.otakulist.data.local.entity.RelatedAnimeItem
 import com.example.otakulist.data.local.entity.UserWatchlistEntity
 import com.example.otakulist.data.local.entity.getParsedRelatedAnime
+import com.example.otakulist.data.local.entity.getPrimaryStudio
+import com.example.otakulist.data.local.entity.getProducers
 import com.example.otakulist.data.model.WatchlistStatus
 import com.example.otakulist.ui.components.AnimeCoverImage
-import com.example.otakulist.ui.components.KuroTrackDetailTopBar
+import com.example.otakulist.ui.components.OtakuDetailTopBar
 import com.example.otakulist.ui.theme.CanvasBackground
 import com.example.otakulist.ui.theme.CardShape
 import com.example.otakulist.ui.theme.CompactButtonShape
@@ -105,77 +115,95 @@ import com.example.otakulist.ui.theme.SurfaceContainerLow
 import com.example.otakulist.ui.theme.SurfaceContainerLowest
 import com.example.otakulist.ui.theme.SurfaceVariant
 import com.example.otakulist.ui.theme.Tertiary
+import com.example.otakulist.ui.theme.OtakuTheme
 import com.example.otakulist.ui.theme.Typography
 
 @Composable
 fun DetailScreen(
     viewModel: DetailViewModel,
     onBackClick: () -> Unit,
-    onAnimeClick: (Int) -> Unit = {},
+    onAnimeClick: (Int, Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val anime by viewModel.anime.collectAsState()
     val watchlistEntry by viewModel.watchlistEntry.collectAsState()
     val isSaved by viewModel.isSaved.collectAsState()
     val context = LocalContext.current
+    val colors = OtakuTheme.colors
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(CanvasBackground)
+            .background(colors.canvasBackground)
     ) {
-        // 1. Top Bar
-        KuroTrackDetailTopBar(
-            onBackClick = onBackClick,
-            onMoreClick = {}
-        )
-
-        anime?.let { item ->
-            val scrollState = rememberScrollState()
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(bottom = Dimens.spacing2Xl)
-            ) {
-                // 2. Sub-Nav Bar (Offline Status + Actions)
-                SubNavBar(
-                    isSaved = isSaved,
-                    onToggleSave = {
-                        if (isSaved) {
-                            viewModel.removeFromWatchlist()
-                        } else {
-                            viewModel.addToWatchlist(WatchlistStatus.BELUM)
-                        }
-                    },
-                    onShare = {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // 1. Top Bar
+            OtakuDetailTopBar(
+                title = "Detail Anime",
+                onBackClick = onBackClick,
+                onShareClick = {
+                    anime?.let { item ->
                         val sendIntent = Intent().apply {
                             action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, "Lihat ${item.title} di KuroTrack Offline Anime Tracker!")
+                            putExtra(Intent.EXTRA_TEXT, "Lihat ${item.title} di OtakuList - Offline Anime Tracker!")
                             type = "text/plain"
                         }
                         context.startActivity(Intent.createChooser(sendIntent, "Bagikan anime"))
                     }
-                )
+                }
+            )
 
-                // 3. Hero Section (Poster + Title + Metadata)
-                HeroSection(anime = item)
+            anime?.let { item ->
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .navigationBarsPadding()
+                        .padding(bottom = Dimens.spacing2Xl)
+                ) {
+                    Spacer(modifier = Modifier.height(Dimens.spacingSm))
 
-                Spacer(modifier = Modifier.height(Dimens.spacingMd))
+                    // 2. Hero Section (Poster + Title + Metadata)
+                    HeroSection(anime = item)
+
+                    Spacer(modifier = Modifier.height(Dimens.spacingMd))
 
                 // 4. Action Area (Unsaved vs Saved State)
-                Box(modifier = Modifier.padding(horizontal = Dimens.marginScreen)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Dimens.marginScreen)
+                        .animateContentSize(
+                            animationSpec = spring(
+                                dampingRatio = 0.82f,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        )
+                ) {
                     if (!isSaved) {
                         UnsavedActionSection(
-                            onAddToWatchlist = { viewModel.addToWatchlist(WatchlistStatus.BELUM) }
+                            onAddToWatchlist = {
+                                viewModel.addToWatchlist(WatchlistStatus.BELUM)
+                                Toast.makeText(context, "Ditambahkan ke Watchlist", Toast.LENGTH_SHORT).show()
+                            }
                         )
                     } else {
                         watchlistEntry?.let { entry ->
                             SavedActionSection(
                                 entry = entry,
-                                anime = item,
-                                onToggleStatus = { viewModel.toggleStatus() },
-                                onRemove = { viewModel.removeFromWatchlist() }
+                                onToggleStatus = {
+                                    viewModel.toggleStatus()
+                                    val isSudah = entry.status == WatchlistStatus.SUDAH.value || entry.status == "COMPLETED"
+                                    val msg = if (isSudah) "Diubah ke Belum Ditonton" else "Ditandai Sudah Ditonton"
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                },
+                                onRemove = {
+                                    viewModel.removeFromWatchlist()
+                                    Toast.makeText(context, "Dihapus dari Watchlist", Toast.LENGTH_SHORT).show()
+                                }
                             )
                         }
                     }
@@ -202,7 +230,7 @@ fun DetailScreen(
                     RelatedAnimeSection(
                         currentAnimeId = item.id,
                         relatedList = relatedList,
-                        onAnimeClick = onAnimeClick
+                        onAnimeClick = { targetId -> onAnimeClick(targetId, item.isAdult) }
                     )
                     Spacer(modifier = Modifier.height(Dimens.spacingLg))
                 }
@@ -223,83 +251,29 @@ fun DetailScreen(
             }
         }
     }
-}
 
-@Composable
-private fun SubNavBar(
-    isSaved: Boolean,
-    onToggleSave: () -> Unit,
-    onShare: () -> Unit
-) {
-    Row(
+    // Left edge swipe detector for back navigation
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Dimens.marginScreen, vertical = Dimens.spacingXs),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            modifier = Modifier
-                .clip(PillShape)
-                .background(SurfaceContainerHigh)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(StatusCompleted)
-            )
-            Text(
-                text = "Tersimpan di Penyimpanan Lokal (Offline)",
-                style = Typography.labelSmall.copy(fontSize = 11.sp),
-                color = OnSurfaceMuted
-            )
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CardShape)
-                    .background(SurfaceBase)
-                    .clickable(onClick = onToggleSave),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                    contentDescription = "Bookmark",
-                    tint = if (isSaved) StatusWatching else OnSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
+            .fillMaxHeight()
+            .width(36.dp)
+            .align(Alignment.CenterStart)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, dragAmount ->
+                    if (dragAmount > 20f) {
+                        change.consume()
+                        onBackClick()
+                    }
+                }
             }
-
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CardShape)
-                    .background(SurfaceBase)
-                    .clickable(onClick = onShare),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Share,
-                    contentDescription = "Share",
-                    tint = OnSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-    }
+    )
+}
 }
 
 @Composable
-private fun HeroSection(anime: AnimeEntity) {
+private fun HeroSection(
+    anime: AnimeEntity
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -318,7 +292,8 @@ private fun HeroSection(anime: AnimeEntity) {
             AnimeCoverImage(
                 coverFile = anime.coverFile,
                 contentDescription = anime.title,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                isAdult = anime.isAdult
             )
 
             if (!anime.score.isNullOrBlank() && anime.score != "0" && anime.score != "?") {
@@ -355,7 +330,21 @@ private fun HeroSection(anime: AnimeEntity) {
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (!anime.score.isNullOrBlank() && anime.score != "0" && anime.score != "?") {
+                if (anime.isAdult) {
+                    Box(
+                        modifier = Modifier
+                            .clip(CompactButtonShape)
+                            .background(Color(0xFFE53935).copy(alpha = 0.2f))
+                            .border(1.dp, Color(0xFFE53935), CompactButtonShape)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "18+ Dewasa",
+                            style = Typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                            color = Color(0xFFFF5252)
+                        )
+                    }
+                } else if (!anime.score.isNullOrBlank() && anime.score != "0" && anime.score != "?") {
                     Box(
                         modifier = Modifier
                             .clip(CompactButtonShape)
@@ -469,7 +458,6 @@ private fun UnsavedActionSection(
 @Composable
 private fun SavedActionSection(
     entry: UserWatchlistEntity,
-    anime: AnimeEntity,
     onToggleStatus: () -> Unit,
     onRemove: () -> Unit
 ) {
@@ -480,10 +468,11 @@ private fun SavedActionSection(
             .fillMaxWidth()
             .clip(CardShape)
             .background(SurfaceBase)
+            .border(1.dp, Outline.copy(alpha = 0.35f), CardShape)
             .padding(Dimens.spacingMd),
         verticalArrangement = Arrangement.spacedBy(Dimens.spacingMd)
     ) {
-        // 1. Status Watchlist & Toggle Button
+        // 1. Header: Status Watchlist & Toggle Button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -491,8 +480,8 @@ private fun SavedActionSection(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = "Status Tontonan",
-                    style = Typography.labelSmall,
+                    text = "STATUS TONTONAN",
+                    style = Typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.5.sp),
                     color = OnSurfaceMuted
                 )
                 Row(
@@ -542,13 +531,15 @@ private fun SavedActionSection(
             }
         }
 
+        HorizontalDivider(color = Outline.copy(alpha = 0.3f), thickness = 0.8.dp)
+
         // 2. Remove Button
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(CompactButtonShape)
                 .clickable(onClick = onRemove)
-                .padding(vertical = 6.dp),
+                .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -556,12 +547,12 @@ private fun SavedActionSection(
                 imageVector = Icons.Default.Delete,
                 contentDescription = null,
                 tint = Error,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(15.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = "Hapus dari Watchlist",
-                style = Typography.labelSmall.copy(color = Error)
+                style = Typography.labelSmall.copy(color = Error, fontWeight = FontWeight.Medium)
             )
         }
     }
@@ -613,6 +604,12 @@ private fun SynopsisSection(synopsis: String) {
             .padding(horizontal = Dimens.marginScreen)
             .clip(CardShape)
             .background(SurfaceBase)
+            .animateContentSize(
+                animationSpec = tween(
+                    durationMillis = 250,
+                    easing = FastOutSlowInEasing
+                )
+            )
             .padding(Dimens.spacingMd),
         verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)
     ) {
@@ -644,28 +641,42 @@ private fun SynopsisSection(synopsis: String) {
                 if (!expanded) {
                     canExpand = textLayoutResult.hasVisualOverflow || textLayoutResult.lineCount > 4
                 }
-            }
+            },
+            modifier = if (canExpand) {
+                Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { expanded = !expanded }
+            } else Modifier
         )
 
         if (canExpand) {
-            Row(
-                modifier = Modifier
-                    .clip(CompactButtonShape)
-                    .clickable { expanded = !expanded }
-                    .padding(top = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterEnd
             ) {
-                Text(
-                    text = if (expanded) "Lebih Sedikit" else "Selengkapnya",
-                    style = Typography.labelSmall.copy(fontSize = 11.sp, color = StatusWatching)
-                )
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    tint = StatusWatching,
-                    modifier = Modifier.size(14.dp)
-                )
+                Row(
+                    modifier = Modifier
+                        .clip(CompactButtonShape)
+                        .clickable { expanded = !expanded }
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = if (expanded) "Lebih Sedikit" else "Selengkapnya",
+                        style = Typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = StatusWatching
+                        )
+                    )
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = StatusWatching,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }
@@ -702,66 +713,94 @@ private fun InformationGridSection(anime: AnimeEntity) {
                 color = OnSurface
             )
             Text(
-                text = "Arsip KuroTrack",
+                text = "Arsip OtakuList",
                 style = Typography.labelSmall,
                 color = OnSurfaceMuted
             )
         }
 
         // 2-Column Grid (Studio, Total Episode, Durasi, Rating Usia, Musim Rilis, Sumber Asal)
+        val studioDisplay = anime.getPrimaryStudio() ?: "-"
+
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Max),
             horizontalArrangement = Arrangement.spacedBy(Dimens.spacingSm)
         ) {
             InfoCard(
                 icon = Icons.Default.Apartment,
                 label = "Studio",
-                value = anime.studios ?: "-",
-                modifier = Modifier.weight(1f)
+                value = studioDisplay,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
             )
             InfoCard(
                 icon = Icons.Default.Tag,
                 label = "Total Episode",
-                value = anime.episodes?.let { "$it Episode" } ?: "-",
-                modifier = Modifier.weight(1f)
+                value = anime.episodes?.takeIf { it.isNotBlank() }?.let { "$it Episode" } ?: "-",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
             )
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Max),
             horizontalArrangement = Arrangement.spacedBy(Dimens.spacingSm)
         ) {
             InfoCard(
                 icon = Icons.Default.Schedule,
                 label = "Durasi",
-                value = anime.duration ?: "-",
-                modifier = Modifier.weight(1f)
+                value = anime.duration?.takeIf { it.isNotBlank() } ?: "-",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
             )
             InfoCard(
                 icon = Icons.Default.Shield,
                 label = "Rating Usia",
-                value = anime.rating ?: "-",
-                modifier = Modifier.weight(1f)
+                value = anime.rating?.takeIf { it.isNotBlank() } ?: "-",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
             )
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Max),
             horizontalArrangement = Arrangement.spacedBy(Dimens.spacingSm)
         ) {
             InfoCard(
                 icon = Icons.Default.CalendarMonth,
                 label = "Musim Rilis",
-                value = anime.season ?: "-",
-                modifier = Modifier.weight(1f)
+                value = anime.season?.takeIf { it.isNotBlank() } ?: "-",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
             )
             InfoCard(
                 icon = Icons.Default.AutoStories,
                 label = "Sumber Asal",
                 value = "Katalog Resmi",
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
             )
         }
+
+        InfoCard(
+            icon = Icons.Default.AutoAwesomeMotion,
+            label = "Produser",
+            value = anime.getProducers() ?: "-",
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 4
+        )
     }
 }
 
@@ -770,7 +809,8 @@ private fun InfoCard(
     icon: ImageVector,
     label: String,
     value: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    maxLines: Int = 2
 ) {
     Column(
         modifier = modifier
@@ -799,7 +839,7 @@ private fun InfoCard(
             text = value,
             style = Typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             color = OnSurface,
-            maxLines = 1,
+            maxLines = maxLines,
             overflow = TextOverflow.Ellipsis
         )
     }

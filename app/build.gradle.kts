@@ -1,28 +1,62 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
 
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        load(FileInputStream(keystorePropertiesFile))
+    }
+}
+
 android {
     namespace = "com.example.otakulist"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.example.otakulist"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        targetSdk = 37
+        versionCode = 22
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildTypes {
-        release {
-            optimization {
-                enable = false
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
+    signingConfigs {
+        create("release") {
+            val keyStoreFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+            if (keyStoreFile != null && keyStoreFile.exists()) {
+                storeFile = keyStoreFile
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
             }
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
+        release {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
     compileOptions {

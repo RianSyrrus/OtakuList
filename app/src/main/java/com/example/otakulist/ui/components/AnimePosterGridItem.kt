@@ -42,6 +42,12 @@ import com.example.otakulist.ui.theme.SurfaceContainer
 import com.example.otakulist.ui.theme.Tertiary
 import com.example.otakulist.ui.theme.Typography
 
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.text.font.FontWeight
+import com.example.otakulist.ui.theme.Outline
+
 @Composable
 fun AnimePosterGridItem(
     anime: AnimeEntity,
@@ -52,21 +58,25 @@ fun AnimePosterGridItem(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(bottom = Dimens.spacingXs),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // 1. Elevated 2:3 Poster Frame
+        // 1. Elevated 2:3 Poster Frame with subtle border
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
                 .clip(CardShape)
                 .background(SurfaceContainer)
+                .border(1.dp, Outline.copy(alpha = 0.35f), CardShape)
         ) {
             AnimeCoverImage(
                 coverFile = anime.coverFile,
                 contentDescription = anime.title,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                isAdult = anime.isAdult
             )
 
             // Subtle dark bottom gradient overlay
@@ -77,9 +87,9 @@ fun AnimePosterGridItem(
                         Brush.verticalGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                CanvasBackground.copy(alpha = 0.65f)
+                                Color.Black.copy(alpha = 0.65f)
                             ),
-                            startY = 100f
+                            startY = 120f
                         )
                     )
             )
@@ -91,7 +101,8 @@ fun AnimePosterGridItem(
                         .align(Alignment.TopStart)
                         .padding(6.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(CanvasBackground.copy(alpha = 0.85f))
+                        .background(CanvasBackground.copy(alpha = 0.88f))
+                        .border(0.6.dp, Outline.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
                         .padding(horizontal = 5.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -104,43 +115,90 @@ fun AnimePosterGridItem(
                     )
                     Text(
                         text = anime.score,
-                        style = Typography.labelSmall.copy(fontSize = 10.sp),
+                        style = Typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
                         color = OnBackground
                     )
                 }
             }
 
-            // Watchlist Status Dot (Bottom-Right)
-            if (watchlistStatus != null) {
-                val dotColor = if (watchlistStatus == WatchlistStatus.SUDAH) StatusCompleted else StatusWatching
+            // Format Type Pill (Top-Right)
+            if (!anime.type.isNullOrBlank()) {
                 Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(CanvasBackground.copy(alpha = 0.85f))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = anime.type,
+                        style = Typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Medium),
+                        color = OnSurfaceMuted
+                    )
+                }
+            }
+
+            // Watchlist Status Pill (Bottom-Right)
+            if (watchlistStatus != null) {
+                val isDone = watchlistStatus == WatchlistStatus.SUDAH
+                Row(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(6.dp)
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(dotColor)
-                )
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(CanvasBackground.copy(alpha = 0.92f))
+                        .border(
+                            0.7.dp,
+                            if (isDone) StatusCompleted.copy(alpha = 0.7f) else StatusWatching.copy(alpha = 0.7f),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isDone) Icons.Default.Check else Icons.Default.Bookmark,
+                        contentDescription = null,
+                        tint = if (isDone) StatusCompleted else StatusWatching,
+                        modifier = Modifier.size(9.dp)
+                    )
+                    Text(
+                        text = if (isDone) "Selesai" else "Tonton",
+                        style = Typography.labelSmall.copy(
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = if (isDone) StatusCompleted else StatusWatching
+                    )
+                }
             }
         }
 
-        // 2. Title & Subtitle below poster
-        Text(
-            text = anime.title,
-            style = Typography.titleMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
-            color = OnSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        // 2. Title & Metadata below poster
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = anime.title,
+                style = Typography.titleMedium.copy(
+                    fontSize = 12.5.sp,
+                    lineHeight = 16.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = OnSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
 
-        val typeText = anime.type ?: "TV"
-        val epText = anime.episodes?.let { "$it ep" } ?: "1 ep"
-        Text(
-            text = "$typeText · $epText",
-            style = Typography.bodySmall.copy(fontSize = 11.sp),
-            color = OnSurfaceMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+            val epText = anime.episodes?.let { "$it ep" } ?: "1 ep"
+            val seasonText = anime.season?.takeIf { it.isNotBlank() }
+            val meta = if (seasonText != null) "$epText · $seasonText" else epText
+            Text(
+                text = meta,
+                style = Typography.bodySmall.copy(fontSize = 10.5.sp),
+                color = OnSurfaceMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }

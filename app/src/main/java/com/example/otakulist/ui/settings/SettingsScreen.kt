@@ -4,9 +4,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,23 +25,26 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cached
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Dataset
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.filled.OfflineBolt
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Policy
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.BrightnessAuto
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,6 +57,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,16 +66,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.otakulist.BuildConfig
-import com.example.otakulist.ui.components.KuroTrackTopBar
+import com.example.otakulist.data.local.AppThemeMode
+import com.example.otakulist.ui.components.OtakuTopBar
+import com.example.otakulist.ui.theme.AccentPresets
 import com.example.otakulist.ui.theme.CanvasBackground
+import com.example.otakulist.ui.theme.OtakuTheme
+import com.example.otakulist.ui.theme.parseHexColor
 import com.example.otakulist.ui.theme.CardShape
 import com.example.otakulist.ui.theme.CompactButtonShape
 import com.example.otakulist.ui.theme.Dimens
+import com.example.otakulist.ui.theme.Error
 import com.example.otakulist.ui.theme.OnBackground
 import com.example.otakulist.ui.theme.OnSurface
 import com.example.otakulist.ui.theme.OnSurfaceMuted
@@ -78,9 +90,9 @@ import com.example.otakulist.ui.theme.Outline
 import com.example.otakulist.ui.theme.PillShape
 import com.example.otakulist.ui.theme.PrimaryAccent
 import com.example.otakulist.ui.theme.StatusCompleted
-import com.example.otakulist.ui.theme.StatusWatching
 import com.example.otakulist.ui.theme.SurfaceBase
-import com.example.otakulist.ui.theme.SurfaceBright
+import com.example.otakulist.ui.theme.SurfaceContainer
+import com.example.otakulist.ui.theme.SurfaceContainerHigh
 import com.example.otakulist.ui.theme.SurfaceVariant
 import com.example.otakulist.ui.theme.Typography
 
@@ -90,589 +102,444 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val isAdultContentEnabled by viewModel.isAdultContentEnabled.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
+    val accentColorHex by viewModel.accentColorHex.collectAsState()
+    val regularWatchlistCount by viewModel.regularWatchlistCount.collectAsState()
+    val adultWatchlistCount by viewModel.adultWatchlistCount.collectAsState()
     val exportJson by viewModel.exportJson.collectAsState()
     val importMessage by viewModel.importMessage.collectAsState()
+    val actionFeedback by viewModel.actionFeedback.collectAsState()
 
     var showImportDialog by remember { mutableStateOf(false) }
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
+    var showCustomColorDialog by remember { mutableStateOf(false) }
     var importInputText by remember { mutableStateOf("") }
-    var wifiOnlyImages by remember { mutableStateOf(false) }
-    var cacheSizeText by remember { mutableStateOf("24.6 MB") }
 
     val scrollState = rememberScrollState()
+
+    LaunchedEffect(actionFeedback) {
+        actionFeedback?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            viewModel.dismissFeedback()
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(CanvasBackground)
+            .background(OtakuTheme.colors.canvasBackground)
     ) {
-        KuroTrackTopBar(subtitle = "Settings")
+        OtakuTopBar(subtitle = "Settings")
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(horizontal = Dimens.marginScreen)
-                .padding(top = Dimens.spacingSm, bottom = Dimens.spacing2Xl + 32.dp),
-            verticalArrangement = Arrangement.spacedBy(Dimens.spacingXl)
+                .padding(top = Dimens.spacingSm, bottom = 100.dp),
+            verticalArrangement = Arrangement.spacedBy(Dimens.spacingLg)
         ) {
-            // Header
-            Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
+            // Screen Header
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = "Pengaturan",
                     style = Typography.headlineLarge,
-                    color = OnBackground
+                    color = OtakuTheme.colors.onBackground
                 )
                 Text(
-                    text = "Kelola data lokal, arsip, dan preferensi aplikasi",
+                    text = "Kelola preferensi konten, cadangan data, dan basis data offline",
                     style = Typography.bodySmall,
-                    color = OnSurfaceMuted
+                    color = OtakuTheme.colors.onSurfaceMuted
                 )
             }
 
-            // Hero Banner: Ruang Arsip Lokal
-            Row(
+            // Hero System Status Card
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(CardShape)
-                    .background(SurfaceBase)
-                    .padding(Dimens.spacingMd),
-                horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
-                verticalAlignment = Alignment.CenterVertically
+                    .background(OtakuTheme.colors.surfaceBase)
+                    .border(1.dp, OtakuTheme.colors.outline.copy(alpha = 0.25f), CardShape)
+                    .padding(Dimens.spacingMd)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 44.dp, height = 56.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(SurfaceVariant),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Inventory2,
-                        contentDescription = null,
-                        tint = PrimaryAccent,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(OtakuTheme.colors.surfaceContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Storage,
+                            contentDescription = null,
+                            tint = OtakuTheme.colors.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "RUANG ARSIP LOKAL",
-                        style = Typography.labelSmall.copy(letterSpacing = 1.sp),
-                        color = PrimaryAccent
-                    )
-                    Text(
-                        text = "Koleksi Offline Tersedia",
-                        style = Typography.titleMedium,
-                        color = OnSurface
-                    )
-                    Text(
-                        text = "3.360 entri tersimpan di memori perangkat",
-                        style = Typography.bodySmall,
-                        color = OnSurfaceMuted
-                    )
-                }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(StatusCompleted)
+                            )
+                            Text(
+                                text = "DATABASE OFFLINE LOKAL",
+                                style = Typography.labelSmall.copy(letterSpacing = 0.8.sp, fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                color = StatusCompleted
+                            )
+                        }
 
-                Box(
+                        Text(
+                            text = if (isAdultContentEnabled) {
+                                "3.360 Reguler · 1.637 Dewasa"
+                            } else {
+                                "3.360 Judul Anime Tersedia"
+                            },
+                            style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
+                            color = OtakuTheme.colors.onSurface
+                        )
+
+                        val watchlistSummary = if (isAdultContentEnabled) {
+                            "$regularWatchlistCount tersimpan (Reguler) · $adultWatchlistCount tersimpan (18+)"
+                        } else {
+                            "$regularWatchlistCount judul tersimpan di watchlist"
+                        }
+                        Text(
+                            text = watchlistSummary,
+                            style = Typography.bodySmall.copy(fontSize = 11.5.sp),
+                            color = OtakuTheme.colors.onSurfaceMuted
+                        )
+                    }
+                }
+            }
+
+            // Seksi 0: Tampilan & Personalisasi
+            SettingsSection(title = "Tampilan & Personalisasi") {
+                Column(
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(SurfaceVariant),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(Dimens.spacingMd),
+                    verticalArrangement = Arrangement.spacedBy(Dimens.spacingMd)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Inventory2,
-                        contentDescription = null,
-                        tint = PrimaryAccent,
-                        modifier = Modifier.size(18.dp)
+                    // Mode Tampilan
+                    Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)) {
+                        Text(
+                            text = "Mode Tampilan",
+                            style = Typography.titleMedium.copy(fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold),
+                            color = OtakuTheme.colors.onSurface
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(OtakuTheme.colors.surfaceContainer)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val modes = listOf(
+                                Triple(AppThemeMode.DARK, "Gelap", Icons.Outlined.DarkMode),
+                                Triple(AppThemeMode.LIGHT, "Terang", Icons.Outlined.LightMode),
+                                Triple(AppThemeMode.SYSTEM, "Sistem", Icons.Outlined.BrightnessAuto)
+                            )
+                            modes.forEach { (mode, label, iconVector) ->
+                                val isSelected = themeMode == mode
+                                val animBgColor by animateColorAsState(
+                                    targetValue = if (isSelected) OtakuTheme.colors.primary.copy(alpha = 0.16f) else Color.Transparent,
+                                    label = "themeModeBg"
+                                )
+                                val animBorderColor by animateColorAsState(
+                                    targetValue = if (isSelected) OtakuTheme.colors.primary else Color.Transparent,
+                                    label = "themeModeBorder"
+                                )
+                                val animContentColor by animateColorAsState(
+                                    targetValue = if (isSelected) OtakuTheme.colors.primary else OtakuTheme.colors.onSurfaceMuted,
+                                    label = "themeModeContent"
+                                )
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(animBgColor)
+                                        .border(
+                                            width = if (isSelected) 1.2.dp else 0.dp,
+                                            color = animBorderColor,
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable { viewModel.setThemeMode(mode) }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = iconVector,
+                                            contentDescription = null,
+                                            tint = animContentColor,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Text(
+                                            text = label,
+                                            style = Typography.labelMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                fontSize = 12.5.sp
+                                            ),
+                                            color = animContentColor
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = OtakuTheme.colors.outline.copy(alpha = 0.15f))
+
+                    // Warna Template / Aksen
+                    Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Warna Aksen",
+                                style = Typography.titleMedium.copy(fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold),
+                                color = OtakuTheme.colors.onSurface
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(OtakuTheme.colors.primary.copy(alpha = 0.12f))
+                                    .clickable { showCustomColorDialog = true }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Palette,
+                                    contentDescription = null,
+                                    tint = OtakuTheme.colors.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Kustom HEX",
+                                    style = Typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                                    color = OtakuTheme.colors.primary
+                                )
+                            }
+                        }
+
+                        // Presets Swatches
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AccentPresets.forEach { preset ->
+                                val isSelected = accentColorHex.equals(preset.hex, ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(preset.color)
+                                        .border(
+                                            width = if (isSelected) 2.5.dp else 0.dp,
+                                            color = if (isSelected) OtakuTheme.colors.onSurface else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .clickable { viewModel.setAccentColorHex(preset.hex) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Terpilih",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Seksi 1: Preferensi Konten
+            SettingsSection(title = "Preferensi Konten") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(Dimens.spacingMd),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isAdultContentEnabled) {
+                                        if (OtakuTheme.colors.isDark) Color(0xFF3E1F24) else Color(0xFFFFEBEE)
+                                    } else {
+                                        OtakuTheme.colors.surfaceVariant
+                                    }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = if (isAdultContentEnabled) {
+                                    if (OtakuTheme.colors.isDark) Color(0xFFFF6B6B) else Color(0xFFD32F2F)
+                                } else {
+                                    OtakuTheme.colors.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column(modifier = Modifier.padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Katalog Anime Dewasa (18+)",
+                                style = Typography.titleMedium.copy(fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold),
+                                color = OtakuTheme.colors.onSurface
+                            )
+                            Text(
+                                text = if (isAdultContentEnabled) {
+                                    "Aktif — Tab 18+ dapat diakses di Katalog dan Watchlist (1.637 judul)"
+                                } else {
+                                    "Nonaktif — Seluruh konten 18+ disembunyikan dari aplikasi"
+                                },
+                                style = Typography.bodySmall.copy(fontSize = 11.5.sp),
+                                color = OtakuTheme.colors.onSurfaceMuted
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = isAdultContentEnabled,
+                        onCheckedChange = { viewModel.setAdultContentEnabled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFFE53935),
+                            uncheckedThumbColor = OtakuTheme.colors.onSurfaceMuted,
+                            uncheckedTrackColor = OtakuTheme.colors.surfaceVariant
+                        )
                     )
                 }
             }
 
-            // Section 1: Penyimpanan & Data
-            SettingsSection(title = "PENYIMPANAN & DATA") {
+            // Seksi 2: Manajemen Data & Cadangan
+            SettingsSection(title = "Manajemen Data & Cadangan") {
                 SettingsActionRow(
                     icon = Icons.Default.FileDownload,
-                    title = "Backup Koleksi (Export JSON)",
-                    subtitle = "Simpan salinan database lokal",
+                    title = "Cadangkan Data (Ekspor JSON)",
+                    subtitle = "Simpan salinan seluruh entri watchlist ke format JSON",
                     onClick = { viewModel.exportWatchlist() }
                 )
 
-                HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
+                HorizontalDivider(
+                    color = OtakuTheme.colors.outline.copy(alpha = 0.15f),
+                    thickness = 0.8.dp,
+                    modifier = Modifier.padding(horizontal = Dimens.spacingMd)
+                )
 
                 SettingsActionRow(
                     icon = Icons.Default.FileUpload,
-                    title = "Pulihkan Data (Restore JSON)",
-                    subtitle = "Import berkas cadangan .json",
+                    title = "Pulihkan Data (Impor JSON)",
+                    subtitle = "Kembalikan entri watchlist dari salinan berkas cadangan JSON",
                     onClick = {
                         importInputText = ""
                         showImportDialog = true
                     }
                 )
 
-                HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(Dimens.spacingMd),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CompactButtonShape)
-                                .background(SurfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PieChart,
-                                contentDescription = null,
-                                tint = OnSurface,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "Ukuran Cache Lokal",
-                                style = Typography.titleMedium.copy(fontSize = 15.sp),
-                                color = OnSurface
-                            )
-                            Text(
-                                text = "Gambar poster & data sementara",
-                                style = Typography.bodySmall,
-                                color = OnSurfaceMuted
-                            )
-                        }
-                    }
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingSm),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(SurfaceBright)
-                                .padding(horizontal = Dimens.spacingSm, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = cacheSizeText,
-                                style = Typography.labelMedium,
-                                color = OnSurface
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(SurfaceVariant)
-                                .clickable {
-                                    cacheSizeText = "0 MB"
-                                    Toast.makeText(context, "Cache poster dibersihkan", Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(horizontal = Dimens.spacingMd, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = "Bersihkan Cache",
-                                style = Typography.labelSmall,
-                                color = OnSurface
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Section 2: Arsip Offline & Sinkronisasi
-            SettingsSection(title = "ARSIP OFFLINE & SINKRONISASI") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(Dimens.spacingMd),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CompactButtonShape)
-                                .background(SurfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = null,
-                                tint = OnSurface,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "Status Sinkron",
-                                style = Typography.titleMedium.copy(fontSize = 15.sp),
-                                color = OnSurface
-                            )
-                            Text(
-                                text = "Database lokal terintegrasi",
-                                style = Typography.bodySmall,
-                                color = OnSurfaceMuted
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .clip(PillShape)
-                            .background(SurfaceVariant)
-                            .padding(horizontal = Dimens.spacingSm, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(StatusCompleted)
-                        )
-                        Text(
-                            text = "Tersinkron Penuh",
-                            style = Typography.labelSmall,
-                            color = StatusCompleted
-                        )
-                    }
-                }
-
-                HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            Toast.makeText(context, "Katalog lokal sudah versi terbaru", Toast.LENGTH_SHORT).show()
-                        }
-                        .padding(Dimens.spacingMd),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CompactButtonShape)
-                                .background(SurfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Cached,
-                                contentDescription = null,
-                                tint = OnSurface,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "Sinkronisasi Ulang Katalog",
-                                style = Typography.titleMedium.copy(fontSize = 15.sp),
-                                color = OnSurface
-                            )
-                            Text(
-                                text = "Perbarui metadata judul & episode terbaru",
-                                style = Typography.bodySmall,
-                                color = OnSurfaceMuted
-                            )
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(SurfaceVariant)
-                            .padding(horizontal = Dimens.spacingSm, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "Cek Sekarang",
-                            style = Typography.labelSmall,
-                            color = PrimaryAccent
-                        )
-                    }
-                }
-
-                HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(Dimens.spacingMd),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CompactButtonShape)
-                                .background(SurfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Dataset,
-                                contentDescription = null,
-                                tint = OnSurface,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "Versi Database Anime",
-                                style = Typography.titleMedium.copy(fontSize = 15.sp),
-                                color = OnSurface
-                            )
-                            Text(
-                                text = "Snapshot arsip statis terpaket",
-                                style = Typography.bodySmall,
-                                color = OnSurfaceMuted
-                            )
-                        }
-                    }
-
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "v2024.11-offline",
-                            style = Typography.labelSmall,
-                            color = OnSurfaceMuted
-                        )
-                        Text(
-                            text = "(3.360 anime)",
-                            style = Typography.labelSmall,
-                            color = OnSurface
-                        )
-                    }
-                }
-            }
-
-            // Section 3: Tampilan & Preferensi
-            SettingsSection(title = "TAMPILAN & PREFERENSI") {
-                SettingsStaticRow(
-                    icon = Icons.Default.DarkMode,
-                    title = "Mode Tema",
-                    subtitle = "Warna kanvas dan estetika latar",
-                    value = "Gelap (OLED/Charcoal)"
+                HorizontalDivider(
+                    color = OtakuTheme.colors.outline.copy(alpha = 0.15f),
+                    thickness = 0.8.dp,
+                    modifier = Modifier.padding(horizontal = Dimens.spacingMd)
                 )
 
-                HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
-
-                SettingsStaticRow(
-                    icon = Icons.Default.Translate,
-                    title = "Bahasa Antarmuka",
-                    subtitle = "Teks navigasi dan katalog",
-                    value = "Bahasa Indonesia"
+                SettingsActionRow(
+                    icon = Icons.Default.DeleteSweep,
+                    iconTint = Error,
+                    title = "Kosongkan Watchlist",
+                    titleColor = Error,
+                    subtitle = "Hapus seluruh catatan tontonan tanpa mengubah arsip katalog master",
+                    onClick = { showClearConfirmDialog = true }
                 )
-
-                HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(Dimens.spacingMd),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CompactButtonShape)
-                                .background(SurfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.NetworkWifi,
-                                contentDescription = null,
-                                tint = OnSurface,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "Tampilan Gambar",
-                                style = Typography.titleMedium.copy(fontSize = 15.sp),
-                                color = OnSurface
-                            )
-                            Text(
-                                text = "Hemat Kuota Poster (Muat saat Wi-Fi)",
-                                style = Typography.bodySmall,
-                                color = OnSurfaceMuted
-                            )
-                        }
-                    }
-
-                    Switch(
-                        checked = wifiOnlyImages,
-                        onCheckedChange = { wifiOnlyImages = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = OnBackground,
-                            checkedTrackColor = StatusWatching,
-                            uncheckedThumbColor = OnSurfaceMuted,
-                            uncheckedTrackColor = SurfaceVariant
-                        )
-                    )
-                }
             }
 
-            // Section 4: Tentang Aplikasi
-            SettingsSection(title = "TENTANG APLIKASI") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(Dimens.spacingMd),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CompactButtonShape)
-                                .background(SurfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                tint = OnSurface,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+            // Seksi 3: Spesifikasi Teknis & Integritas
+            SettingsSection(title = "Informasi & Integritas Offline") {
+                SettingsInfoRow(
+                    icon = Icons.Default.Info,
+                    title = "Versi Aplikasi",
+                    value = "v${BuildConfig.VERSION_NAME}"
+                )
 
-                        Column {
-                            Text(
-                                text = "Versi Aplikasi",
-                                style = Typography.titleMedium.copy(fontSize = 15.sp),
-                                color = OnSurface
-                            )
-                            Text(
-                                text = "Salinan terpasang di perangkat",
-                                style = Typography.bodySmall,
-                                color = OnSurfaceMuted
-                            )
-                        }
-                    }
+                HorizontalDivider(
+                    color = OtakuTheme.colors.outline.copy(alpha = 0.15f),
+                    thickness = 0.8.dp,
+                    modifier = Modifier.padding(horizontal = Dimens.spacingMd)
+                )
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(SurfaceBright)
-                            .padding(horizontal = Dimens.spacingSm, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "KuroTrack v${BuildConfig.VERSION_NAME}",
-                            style = Typography.labelMedium,
-                            color = OnSurface
-                        )
-                    }
-                }
+                SettingsInfoRow(
+                    icon = Icons.Default.Dataset,
+                    title = "Basis Data Katalog",
+                    value = if (isAdultContentEnabled) "3.360 Reguler + 1.637 Dewasa" else "3.360 Judul Reguler"
+                )
 
-                HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
+                HorizontalDivider(
+                    color = OtakuTheme.colors.outline.copy(alpha = 0.15f),
+                    thickness = 0.8.dp,
+                    modifier = Modifier.padding(horizontal = Dimens.spacingMd)
+                )
 
-                SettingsStaticRow(
+                SettingsInfoRow(
+                    icon = Icons.Default.Image,
+                    title = "Aset Sampul Poster",
+                    value = if (isAdultContentEnabled) "4.997 Berkas .webp (Lokal)" else "3.360 Berkas .webp (Lokal)"
+                )
+
+                HorizontalDivider(
+                    color = OtakuTheme.colors.outline.copy(alpha = 0.15f),
+                    thickness = 0.8.dp,
+                    modifier = Modifier.padding(horizontal = Dimens.spacingMd)
+                )
+
+                SettingsInfoRow(
                     icon = Icons.Default.Policy,
-                    title = "Lisensi Sumber Terbuka",
-                    subtitle = "Kredit modul pihak ketiga & lisensi Apache 2.0",
-                    value = "Lihat"
+                    title = "Privasi & Lisensi",
+                    value = "100% Offline (Tanpa Pelacak)"
                 )
-
-                HorizontalDivider(color = SurfaceVariant, thickness = 1.dp)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com"))
-                            context.startActivity(intent)
-                        }
-                        .padding(Dimens.spacingMd),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CompactButtonShape)
-                                .background(SurfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Code,
-                                contentDescription = null,
-                                tint = OnSurface,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "GitHub Repository & Dukungan",
-                                style = Typography.titleMedium.copy(fontSize = 15.sp),
-                                color = OnSurface
-                            )
-                            Text(
-                                text = "Laporkan kendala atau kontribusi kode",
-                                style = Typography.bodySmall,
-                                color = OnSurfaceMuted
-                            )
-                        }
-                    }
-
-                    Icon(
-                        imageVector = Icons.Default.OpenInNew,
-                        contentDescription = null,
-                        tint = OnSurfaceMuted,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
             }
 
-            // Footer note
+            // Footer
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = Dimens.spacingMd),
+                    .padding(vertical = Dimens.spacingSm),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -684,16 +551,16 @@ fun SettingsScreen(
                         imageVector = Icons.Default.OfflineBolt,
                         contentDescription = null,
                         tint = PrimaryAccent,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                     Text(
-                        text = "Arsip Koleksi Lokal Tanpa Pelacak Komersial",
-                        style = Typography.labelSmall,
+                        text = "OtakuList - Offline Anime Tracker",
+                        style = Typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = OnSurfaceMuted
                     )
                 }
                 Text(
-                    text = "Dibuat dengan fokus ketelitian pencatatan",
+                    text = "Arsip pribadi yang beroperasi mandiri di penyimpanan lokal perangkat.",
                     style = Typography.bodySmall.copy(fontSize = 11.sp),
                     color = OnSurfaceMuted.copy(alpha = 0.6f)
                 )
@@ -705,16 +572,17 @@ fun SettingsScreen(
     exportJson?.let { json ->
         AlertDialog(
             onDismissRequest = { viewModel.dismissExportDialog() },
-            containerColor = SurfaceBase,
+            containerColor = OtakuTheme.colors.surfaceBase,
+            shape = RoundedCornerShape(16.dp),
             title = {
-                Text(text = "Cadangan Data (JSON)", style = Typography.titleMedium, color = OnSurface)
+                Text(text = "Cadangan Data Watchlist", style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = OtakuTheme.colors.onSurface)
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)) {
                     Text(
-                        text = "Salin teks JSON berikut dan simpan sebagai file cadangan:",
+                        text = "Data watchlist berhasil diekspor ke format JSON. Salin ke clipboard atau bagikan ke aplikasi lain:",
                         style = Typography.bodySmall,
-                        color = OnSurfaceMuted
+                        color = OtakuTheme.colors.onSurfaceMuted
                     )
                     OutlinedTextField(
                         value = json,
@@ -722,39 +590,59 @@ fun SettingsScreen(
                         readOnly = true,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(140.dp),
+                            .height(130.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = SurfaceVariant,
-                            unfocusedContainerColor = SurfaceVariant,
-                            focusedTextColor = OnBackground,
-                            unfocusedTextColor = OnBackground,
-                            focusedBorderColor = Outline,
-                            unfocusedBorderColor = Outline
+                            focusedContainerColor = OtakuTheme.colors.surfaceVariant,
+                            unfocusedContainerColor = OtakuTheme.colors.surfaceVariant,
+                            focusedTextColor = OtakuTheme.colors.onBackground,
+                            unfocusedTextColor = OtakuTheme.colors.onBackground,
+                            focusedBorderColor = OtakuTheme.colors.outline,
+                            unfocusedBorderColor = OtakuTheme.colors.outline
                         ),
-                        textStyle = Typography.bodySmall
+                        textStyle = Typography.bodySmall.copy(fontSize = 11.sp)
                     )
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("OtakuList Backup", json)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "JSON disalin ke clipboard!", Toast.LENGTH_SHORT).show()
-                        viewModel.dismissExportDialog()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent, contentColor = OnBackground),
-                    shape = CompactButtonShape
-                ) {
-                    Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "Salin ke Clipboard", style = Typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(Dimens.spacingSm)) {
+                    Button(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("OtakuList Backup", json)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "Cadangan disalin ke clipboard!", Toast.LENGTH_SHORT).show()
+                            viewModel.dismissExportDialog()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.primary, contentColor = Color.White),
+                        shape = CompactButtonShape
+                    ) {
+                        Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "Salin", style = Typography.labelMedium)
+                    }
+
+                    Button(
+                        onClick = {
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, json)
+                                type = "application/json"
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "Bagikan Berkas Cadangan"))
+                            viewModel.dismissExportDialog()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.surfaceContainerHigh, contentColor = OtakuTheme.colors.onSurface),
+                        shape = CompactButtonShape
+                    ) {
+                        Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "Bagikan", style = Typography.labelMedium)
+                    }
                 }
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.dismissExportDialog() }) {
-                    Text(text = "Tutup", color = OnSurfaceMuted)
+                    Text(text = "Tutup", color = OtakuTheme.colors.onSurfaceMuted)
                 }
             }
         )
@@ -764,33 +652,34 @@ fun SettingsScreen(
     if (showImportDialog) {
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
-            containerColor = SurfaceBase,
+            containerColor = OtakuTheme.colors.surfaceBase,
+            shape = RoundedCornerShape(16.dp),
             title = {
-                Text(text = "Impor Data Watchlist", style = Typography.titleMedium, color = OnSurface)
+                Text(text = "Pulihkan Data Watchlist", style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = OtakuTheme.colors.onSurface)
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)) {
                     Text(
-                        text = "Tempelkan kode JSON cadangan kamu di bawah ini:",
+                        text = "Tempelkan kode JSON cadangan kamu di bawah ini untuk memulihkan entri tontonan:",
                         style = Typography.bodySmall,
-                        color = OnSurfaceMuted
+                        color = OtakuTheme.colors.onSurfaceMuted
                     )
                     OutlinedTextField(
                         value = importInputText,
                         onValueChange = { importInputText = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(140.dp),
+                            .height(130.dp),
                         placeholder = { Text(text = "[{\"animeId\":1,...}]") },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = SurfaceVariant,
-                            unfocusedContainerColor = SurfaceVariant,
-                            focusedTextColor = OnBackground,
-                            unfocusedTextColor = OnBackground,
-                            focusedBorderColor = PrimaryAccent,
-                            unfocusedBorderColor = Outline
+                            focusedContainerColor = OtakuTheme.colors.surfaceVariant,
+                            unfocusedContainerColor = OtakuTheme.colors.surfaceVariant,
+                            focusedTextColor = OtakuTheme.colors.onBackground,
+                            unfocusedTextColor = OtakuTheme.colors.onBackground,
+                            focusedBorderColor = OtakuTheme.colors.primary,
+                            unfocusedBorderColor = OtakuTheme.colors.outline
                         ),
-                        textStyle = Typography.bodySmall
+                        textStyle = Typography.bodySmall.copy(fontSize = 11.sp)
                     )
                 }
             },
@@ -803,38 +692,159 @@ fun SettingsScreen(
                         }
                     },
                     enabled = importInputText.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent, contentColor = OnBackground),
+                    colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.primary, contentColor = Color.White),
                     shape = CompactButtonShape
                 ) {
-                    Text(text = "Pulihkan", style = Typography.labelMedium)
+                    Text(text = "Pulihkan Data", style = Typography.labelMedium)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showImportDialog = false }) {
-                    Text(text = "Batal", color = OnSurfaceMuted)
+                    Text(text = "Batal", color = OtakuTheme.colors.onSurfaceMuted)
                 }
             }
         )
     }
 
-    // Import Result Message
+    // Clear Watchlist Confirmation Dialog
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            containerColor = OtakuTheme.colors.surfaceBase,
+            shape = RoundedCornerShape(16.dp),
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = Error,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(text = "Kosongkan Seluruh Watchlist?", style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = OtakuTheme.colors.onSurface)
+            },
+            text = {
+                Text(
+                    text = "Tindakan ini akan menghapus seluruh entri tontonan dari perangkat. Arsip katalog master tidak akan terpengaruh.",
+                    style = Typography.bodySmall,
+                    color = OtakuTheme.colors.onSurfaceMuted
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearAllWatchlist()
+                        showClearConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Error, contentColor = Color.White),
+                    shape = CompactButtonShape
+                ) {
+                    Text(text = "Ya, Kosongkan", style = Typography.labelMedium)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmDialog = false }) {
+                    Text(text = "Batal", color = OtakuTheme.colors.onSurfaceMuted)
+                }
+            }
+        )
+    }
+
+    // Import Result Message Dialog
     importMessage?.let { msg ->
         AlertDialog(
             onDismissRequest = { viewModel.dismissImportMessage() },
-            containerColor = SurfaceBase,
+            containerColor = OtakuTheme.colors.surfaceBase,
+            shape = RoundedCornerShape(16.dp),
             title = {
-                Text(text = "Hasil Pemulihan", style = Typography.titleMedium, color = OnSurface)
+                Text(text = "Status Pemulihan", style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = OtakuTheme.colors.onSurface)
             },
             text = {
-                Text(text = msg, style = Typography.bodyMedium, color = OnSurface)
+                Text(text = msg, style = Typography.bodyMedium, color = OtakuTheme.colors.onSurface)
             },
             confirmButton = {
                 Button(
                     onClick = { viewModel.dismissImportMessage() },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent, contentColor = OnBackground),
+                    colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.primary, contentColor = Color.White),
                     shape = CompactButtonShape
                 ) {
                     Text(text = "Selesai", style = Typography.labelMedium)
+                }
+            }
+        )
+    }
+
+    // Custom Color HEX Input Dialog
+    if (showCustomColorDialog) {
+        var tempHex by remember { mutableStateOf(accentColorHex) }
+        val parsedPreview = parseHexColor(tempHex, OtakuTheme.colors.primary)
+
+        AlertDialog(
+            onDismissRequest = { showCustomColorDialog = false },
+            containerColor = OtakuTheme.colors.surfaceBase,
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Text(
+                    text = "Pilih Warna Kustom",
+                    style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = OtakuTheme.colors.onSurface
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingMd)) {
+                    Text(
+                        text = "Masukkan kode HEX warna (contoh: #E01A6F atau #5B6EE8):",
+                        style = Typography.bodySmall,
+                        color = OtakuTheme.colors.onSurfaceMuted
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(parsedPreview)
+                                .border(1.dp, OtakuTheme.colors.outline, CircleShape)
+                        )
+
+                        OutlinedTextField(
+                            value = tempHex,
+                            onValueChange = { input ->
+                                if (input.length <= 9) tempHex = input
+                            },
+                            singleLine = true,
+                            textStyle = Typography.bodyLarge.copy(color = OtakuTheme.colors.onSurface),
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = OtakuTheme.colors.primary,
+                                unfocusedBorderColor = OtakuTheme.colors.outline,
+                                focusedTextColor = OtakuTheme.colors.onSurface,
+                                unfocusedTextColor = OtakuTheme.colors.onSurface
+                            )
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clean = if (tempHex.startsWith("#")) tempHex else "#$tempHex"
+                        viewModel.setAccentColorHex(clean)
+                        showCustomColorDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.primary, contentColor = Color.White),
+                    shape = CompactButtonShape
+                ) {
+                    Text("Terapkan", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomColorDialog = false }) {
+                    Text("Batal", color = OtakuTheme.colors.onSurfaceMuted)
                 }
             }
         )
@@ -849,16 +859,21 @@ private fun SettingsSection(
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)) {
         Text(
             text = title,
-            style = Typography.labelSmall.copy(letterSpacing = 1.sp),
-            color = PrimaryAccent,
-            modifier = Modifier.padding(horizontal = 4.dp)
+            style = Typography.labelMedium.copy(
+                letterSpacing = 0.6.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp
+            ),
+            color = OtakuTheme.colors.onSurfaceMuted,
+            modifier = Modifier.padding(horizontal = 6.dp)
         )
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(CardShape)
-                .background(SurfaceBase)
+                .background(OtakuTheme.colors.surfaceBase)
+                .border(1.dp, OtakuTheme.colors.outline.copy(alpha = 0.25f), CardShape)
         ) {
             content()
         }
@@ -870,13 +885,15 @@ private fun SettingsActionRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    iconTint: Color = OtakuTheme.colors.onSurface,
+    titleColor: Color = OtakuTheme.colors.onSurface
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(Dimens.spacingMd),
+            .padding(horizontal = Dimens.spacingMd, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -888,28 +905,28 @@ private fun SettingsActionRow(
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(CompactButtonShape)
-                    .background(SurfaceVariant),
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(OtakuTheme.colors.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = OnSurface,
+                    tint = iconTint,
                     modifier = Modifier.size(20.dp)
                 )
             }
 
-            Column {
+            Column(modifier = Modifier.padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = title,
-                    style = Typography.titleMedium.copy(fontSize = 15.sp),
-                    color = OnSurface
+                    style = Typography.titleMedium.copy(fontSize = 14.5.sp, fontWeight = FontWeight.Medium),
+                    color = titleColor
                 )
                 Text(
                     text = subtitle,
-                    style = Typography.bodySmall,
-                    color = OnSurfaceMuted
+                    style = Typography.bodySmall.copy(fontSize = 11.5.sp),
+                    color = OtakuTheme.colors.onSurfaceMuted
                 )
             }
         }
@@ -917,23 +934,22 @@ private fun SettingsActionRow(
         Icon(
             imageVector = Icons.Default.ChevronRight,
             contentDescription = null,
-            tint = OnSurfaceMuted,
-            modifier = Modifier.size(20.dp)
+            tint = OtakuTheme.colors.onSurfaceMuted.copy(alpha = 0.6f),
+            modifier = Modifier.size(18.dp)
         )
     }
 }
 
 @Composable
-private fun SettingsStaticRow(
+private fun SettingsInfoRow(
     icon: ImageVector,
     title: String,
-    subtitle: String,
     value: String
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(Dimens.spacingMd),
+            .padding(horizontal = Dimens.spacingMd, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -945,46 +961,35 @@ private fun SettingsStaticRow(
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(CompactButtonShape)
-                    .background(SurfaceVariant),
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(OtakuTheme.colors.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = OnSurface,
+                    tint = OtakuTheme.colors.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
             }
 
-            Column {
-                Text(
-                    text = title,
-                    style = Typography.titleMedium.copy(fontSize = 15.sp),
-                    color = OnSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = Typography.bodySmall,
-                    color = OnSurfaceMuted
-                )
-            }
+            Text(
+                text = title,
+                style = Typography.titleMedium.copy(fontSize = 14.5.sp, fontWeight = FontWeight.Medium),
+                color = OtakuTheme.colors.onSurface
+            )
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs)
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(OtakuTheme.colors.surfaceContainer)
+                .padding(horizontal = 9.dp, vertical = 5.dp)
         ) {
             Text(
                 text = value,
-                style = Typography.labelSmall,
-                color = OnSurface
-            )
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = OnSurfaceMuted,
-                modifier = Modifier.size(16.dp)
+                style = Typography.labelMedium.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold),
+                color = OtakuTheme.colors.primary
             )
         }
     }

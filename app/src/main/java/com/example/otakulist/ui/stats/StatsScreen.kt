@@ -1,5 +1,8 @@
 package com.example.otakulist.ui.stats
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,8 +36,12 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +50,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.otakulist.data.repository.StatsModel
-import com.example.otakulist.ui.components.KuroTrackTopBar
+import com.example.otakulist.ui.components.OtakuTopBar
 import com.example.otakulist.ui.theme.CanvasBackground
 import com.example.otakulist.ui.theme.CardShape
 import com.example.otakulist.ui.theme.CompactButtonShape
@@ -61,6 +68,7 @@ import com.example.otakulist.ui.theme.StatusWatching
 import com.example.otakulist.ui.theme.SurfaceBase
 import com.example.otakulist.ui.theme.SurfaceBright
 import com.example.otakulist.ui.theme.SurfaceVariant
+import com.example.otakulist.ui.theme.OtakuTheme
 import com.example.otakulist.ui.theme.Typography
 import java.util.Locale
 
@@ -71,20 +79,26 @@ fun StatsScreen(
 ) {
     val stats by viewModel.stats.collectAsState()
     val scrollState = rememberScrollState()
+    var animationTriggered by remember { mutableStateOf(false) }
+    val colors = OtakuTheme.colors
+
+    LaunchedEffect(Unit) {
+        animationTriggered = true
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(CanvasBackground)
+            .background(colors.canvasBackground)
     ) {
-        KuroTrackTopBar(subtitle = "Stats")
+        OtakuTopBar(subtitle = "Stats")
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(horizontal = Dimens.marginScreen)
-                .padding(top = Dimens.spacingSm, bottom = Dimens.spacing2Xl + 32.dp),
+                .padding(top = Dimens.spacingSm, bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(Dimens.spacingXl)
         ) {
             // Header: Title & Time Filter Pill
@@ -226,10 +240,10 @@ fun StatsScreen(
             }
 
             // Collection Distribution
-            CollectionDistributionCard(stats = stats)
+            CollectionDistributionCard(stats = stats, animateProgress = animationTriggered)
 
             // Top Genres
-            TopGenresCard(topGenres = stats.topGenres)
+            TopGenresCard(topGenres = stats.topGenres, animateProgress = animationTriggered)
 
             // Studio & Busiest Year Cards
             Row(
@@ -429,9 +443,26 @@ private fun MetricSummaryCard(
 }
 
 @Composable
-private fun CollectionDistributionCard(stats: StatsModel) {
+private fun CollectionDistributionCard(
+    stats: StatsModel,
+    animateProgress: Boolean = true
+) {
     val total = (stats.sudahCount + stats.belumCount).coerceAtLeast(1)
     val hasData = (stats.sudahCount + stats.belumCount) > 0
+
+    val targetSudahRatio = if (hasData && stats.sudahCount > 0) stats.sudahCount.toFloat() / total else 0f
+    val targetTotalRatio = if (hasData) (stats.sudahCount + stats.belumCount).toFloat() / total else 0f
+
+    val animatedSudahProgress by animateFloatAsState(
+        targetValue = if (animateProgress) targetSudahRatio else 0f,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "distSudahAnim"
+    )
+    val animatedTotalProgress by animateFloatAsState(
+        targetValue = if (animateProgress) targetTotalRatio else 0f,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "distTotalAnim"
+    )
 
     Column(
         modifier = Modifier
@@ -458,36 +489,33 @@ private fun CollectionDistributionCard(stats: StatsModel) {
             )
         }
 
-        // Multi-colored segmented bar: Green (Sudah) vs Blue (Belum)
-        Row(
+        // Multi-colored segmented bar: Green (Sudah) vs Blue (Belum) with progressive fill animation
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(12.dp)
                 .clip(PillShape)
                 .background(SurfaceVariant)
         ) {
-            if (stats.sudahCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(stats.sudahCount.toFloat() / total)
-                        .background(StatusCompleted)
-                )
-            }
-            if (stats.belumCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(stats.belumCount.toFloat() / total)
-                        .background(StatusWatching)
-                )
-            }
-            if (!hasData) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(SurfaceVariant)
-                )
+            if (hasData) {
+                // Background total bar (Belum segment, expanding to animatedTotalProgress)
+                if (animatedTotalProgress > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(animatedTotalProgress.coerceIn(0f, 1f))
+                            .background(StatusWatching)
+                    )
+                }
+                // Foreground Sudah bar (expanding to animatedSudahProgress)
+                if (animatedSudahProgress > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(animatedSudahProgress.coerceIn(0f, 1f))
+                            .background(StatusCompleted)
+                    )
+                }
             }
         }
 
@@ -552,7 +580,10 @@ private fun DistributionPillItem(
 }
 
 @Composable
-private fun TopGenresCard(topGenres: List<Pair<String, Int>>) {
+private fun TopGenresCard(
+    topGenres: List<Pair<String, Int>>,
+    animateProgress: Boolean = true
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -600,7 +631,15 @@ private fun TopGenresCard(topGenres: List<Pair<String, Int>>) {
 
             Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingMd)) {
                 topGenres.take(5).forEachIndexed { index, (genre, count) ->
-                    val fraction = (count.toFloat() / maxCount).coerceIn(0.05f, 1f)
+                    val targetFraction = (count.toFloat() / maxCount).coerceIn(0.05f, 1f)
+                    val animatedFraction by animateFloatAsState(
+                        targetValue = if (animateProgress) targetFraction else 0f,
+                        animationSpec = tween(
+                            durationMillis = 550 + (index * 40),
+                            easing = FastOutSlowInEasing
+                        ),
+                        label = "genreProgress_$genre"
+                    )
                     val alpha = opacities.getOrElse(index) { 0.3f }
 
                     Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
@@ -627,7 +666,7 @@ private fun TopGenresCard(topGenres: List<Pair<String, Int>>) {
                             }
                         }
 
-                        // Progress bar
+                        // Progress bar with progressive fill animation
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -638,7 +677,7 @@ private fun TopGenresCard(topGenres: List<Pair<String, Int>>) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .fillMaxWidth(fraction)
+                                    .fillMaxWidth(animatedFraction)
                                     .clip(PillShape)
                                     .background(StatusWatching.copy(alpha = alpha))
                             )

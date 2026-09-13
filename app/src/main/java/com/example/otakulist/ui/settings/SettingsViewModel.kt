@@ -9,15 +9,65 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+
 class SettingsViewModel(
     private val repository: AnimeRepository
 ) : ViewModel() {
+
+    val isAdultContentEnabled: StateFlow<Boolean> = repository.settingsManager.isAdultContentEnabled
+    val themeMode = repository.settingsManager.themeMode
+    val accentColorHex = repository.settingsManager.accentColorHex
+
+    fun setThemeMode(mode: com.example.otakulist.data.local.AppThemeMode) {
+        repository.settingsManager.setThemeMode(mode)
+    }
+
+    fun setAccentColorHex(hex: String) {
+        repository.settingsManager.setAccentColorHex(hex)
+    }
+
+    val regularWatchlistCount: StateFlow<Int> = repository.getAllWatchlist(isAdult = false)
+        .map { it.size }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
+        )
+
+    val adultWatchlistCount: StateFlow<Int> = repository.getAllWatchlist(isAdult = true)
+        .map { it.size }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
+        )
 
     private val _exportJson = MutableStateFlow<String?>(null)
     val exportJson: StateFlow<String?> = _exportJson.asStateFlow()
 
     private val _importMessage = MutableStateFlow<String?>(null)
     val importMessage: StateFlow<String?> = _importMessage.asStateFlow()
+
+    private val _actionFeedback = MutableStateFlow<String?>(null)
+    val actionFeedback: StateFlow<String?> = _actionFeedback.asStateFlow()
+
+    fun setAdultContentEnabled(enabled: Boolean) {
+        repository.settingsManager.setAdultContentEnabled(enabled)
+    }
+
+    fun clearAllWatchlist() {
+        viewModelScope.launch {
+            repository.clearWatchlist()
+            _actionFeedback.value = "Seluruh entri watchlist berhasil dikosongkan."
+        }
+    }
+
+    fun dismissFeedback() {
+        _actionFeedback.value = null
+    }
 
     fun exportWatchlist() {
         viewModelScope.launch {

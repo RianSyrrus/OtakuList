@@ -1,9 +1,13 @@
 package com.example.otakulist.ui.browse
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,16 +22,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SwapVert
+import com.example.otakulist.ui.theme.Outline
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -40,15 +46,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.otakulist.data.model.AnimeSortOrder
 import com.example.otakulist.ui.components.AnimePosterGridItem
-import com.example.otakulist.ui.components.KuroTrackTopBar
+import com.example.otakulist.ui.components.OtakuTopBar
 import com.example.otakulist.ui.theme.CanvasBackground
 import com.example.otakulist.ui.theme.CardShape
 import com.example.otakulist.ui.theme.CompactButtonShape
@@ -56,6 +65,7 @@ import com.example.otakulist.ui.theme.Dimens
 import com.example.otakulist.ui.theme.OnBackground
 import com.example.otakulist.ui.theme.OnSurface
 import com.example.otakulist.ui.theme.OnSurfaceMuted
+import com.example.otakulist.ui.theme.OnSurfaceVariant
 import com.example.otakulist.ui.theme.PillShape
 import com.example.otakulist.ui.theme.PrimaryAccent
 import com.example.otakulist.ui.theme.StatusCompleted
@@ -64,15 +74,21 @@ import com.example.otakulist.ui.theme.SurfaceBase
 import com.example.otakulist.ui.theme.SurfaceContainer
 import com.example.otakulist.ui.theme.SurfaceContainerHigh
 import com.example.otakulist.ui.theme.SurfaceVariant
+import com.example.otakulist.ui.theme.OtakuTheme
 import com.example.otakulist.ui.theme.Typography
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 
 @Composable
 fun BrowseScreen(
     viewModel: BrowseViewModel,
-    onAnimeClick: (Int) -> Unit,
+    onAnimeClick: (Int, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val selectedCatalogType by viewModel.selectedCatalogType.collectAsState()
+    val isAdultContentEnabled by viewModel.isAdultContentEnabled.collectAsState()
     val selectedGenre by viewModel.selectedGenre.collectAsState()
     val selectedType by viewModel.selectedType.collectAsState()
     val selectedStatus by viewModel.selectedStatus.collectAsState()
@@ -90,21 +106,138 @@ fun BrowseScreen(
     var showStatusMenu by remember { mutableStateOf(false) }
     var showSeasonMenu by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    val colors = OtakuTheme.colors
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(CanvasBackground)
+            .background(colors.canvasBackground)
     ) {
         // 1. Top Brand Header
-        KuroTrackTopBar(subtitle = "Browse")
+        OtakuTopBar(subtitle = "Browse")
+
+        // 1.5. Catalog Switcher Tabs (Only shown when adult content is enabled in settings)
+        if (isAdultContentEnabled) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Dimens.marginScreen, vertical = 6.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(SurfaceContainer)
+                    .border(0.8.dp, Outline.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val isRegularSelected = selectedCatalogType == CatalogType.REGULAR
+                val regularBg by animateColorAsState(
+                    targetValue = if (isRegularSelected) SurfaceVariant else Color.Transparent,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    label = "browseRegularTabBg"
+                )
+                val regularBorder by animateColorAsState(
+                    targetValue = if (isRegularSelected) PrimaryAccent.copy(alpha = 0.45f) else Color.Transparent,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    label = "browseRegularTabBorder"
+                )
+                val regularIconTint by animateColorAsState(
+                    targetValue = if (isRegularSelected) PrimaryAccent else OnSurfaceMuted,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    label = "browseRegularTabIconTint"
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(regularBg)
+                        .border(
+                            0.8.dp,
+                            regularBorder,
+                            RoundedCornerShape(9.dp)
+                        )
+                        .clickable { viewModel.onCatalogTypeSelect(CatalogType.REGULAR) }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Movie,
+                            contentDescription = null,
+                            tint = regularIconTint,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Anime Reguler",
+                            style = Typography.labelMedium.copy(
+                                fontWeight = if (isRegularSelected) FontWeight.Bold else FontWeight.Medium
+                            ),
+                            color = if (isRegularSelected) OnBackground else OnSurfaceMuted
+                        )
+                    }
+                }
+
+                val isAdultSelected = selectedCatalogType == CatalogType.ADULT
+                val adultBg by animateColorAsState(
+                    targetValue = if (isAdultSelected) (if (OtakuTheme.colors.isDark) Color(0xFF381A22) else Color(0xFFFFECEE)) else Color.Transparent,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    label = "browseAdultTabBg"
+                )
+                val adultBorder by animateColorAsState(
+                    targetValue = if (isAdultSelected) (if (OtakuTheme.colors.isDark) Color(0xFFFF5252).copy(alpha = 0.55f) else Color(0xFFE53935).copy(alpha = 0.55f)) else Color.Transparent,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    label = "browseAdultTabBorder"
+                )
+                val adultIconTint by animateColorAsState(
+                    targetValue = if (isAdultSelected) (if (OtakuTheme.colors.isDark) Color(0xFFFF5252) else Color(0xFFD32F2F)) else OnSurfaceMuted,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    label = "browseAdultTabIconTint"
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(adultBg)
+                        .border(
+                            0.8.dp,
+                            adultBorder,
+                            RoundedCornerShape(9.dp)
+                        )
+                        .clickable { viewModel.onCatalogTypeSelect(CatalogType.ADULT) }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = adultIconTint,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Anime Dewasa (18+)",
+                            style = Typography.labelMedium.copy(
+                                fontWeight = if (isAdultSelected) FontWeight.Bold else FontWeight.Medium
+                            ),
+                            color = if (isAdultSelected) (if (OtakuTheme.colors.isDark) Color(0xFFFF6B6B) else Color(0xFFD32F2F)) else OnSurfaceMuted
+                        )
+                    }
+                }
+            }
+        }
 
         // 2. Sticky Search Bar Container (Height 48dp, SurfaceContainer, rounded 12dp)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(CanvasBackground)
-                .padding(top = Dimens.spacingSm, bottom = Dimens.spacingXs)
+                .padding(top = if (isAdultContentEnabled) Dimens.spacingXs else Dimens.spacingSm, bottom = Dimens.spacingXs)
         ) {
             Box(
                 modifier = Modifier
@@ -113,6 +246,7 @@ fun BrowseScreen(
                     .height(48.dp)
                     .clip(CardShape)
                     .background(SurfaceContainer)
+                    .border(1.dp, Outline.copy(alpha = 0.45f), CardShape)
                     .padding(horizontal = Dimens.spacingSm),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -162,186 +296,181 @@ fun BrowseScreen(
                 }
             }
 
-            // 3. Horizontally Scrollable Filter Chips (Genre, Format, Status, Musim, Urutkan)
-            val scrollState = rememberScrollState()
-            Row(
+            // 3. Fixed 2x2 Filter Matrix (Genre, Format, Musim, Status)
+            val hasActiveFilters = selectedGenre != "All" || selectedType != "All" || selectedStatus != "All" || selectedSeason != "All" || selectedSort != AnimeSortOrder.TITLE_ASC
+
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(scrollState)
-                    .padding(horizontal = Dimens.marginScreen, vertical = Dimens.spacingSm),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = Dimens.marginScreen, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Genre Chip Dropdown
-                Box {
-                    FilterPill(
-                        label = "Genre:",
-                        value = selectedGenre,
-                        isActive = selectedGenre != "All",
-                        hasChevron = true,
-                        onClick = { showGenreMenu = true }
-                    )
-                    DropdownMenu(
-                        expanded = showGenreMenu,
-                        onDismissRequest = { showGenreMenu = false },
-                        modifier = Modifier
-                            .background(SurfaceContainerHigh)
-                            .heightIn(max = 380.dp)
-                    ) {
-                        availableGenres.forEach { genre ->
-                            DropdownMenuItem(
-                                text = { Text(genre, style = Typography.labelMedium, color = if (selectedGenre == genre) StatusWatching else OnSurface) },
-                                onClick = {
-                                    viewModel.onGenreSelect(genre)
-                                    showGenreMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // Format / Type Chip Dropdown
-                Box {
-                    FilterPill(
-                        label = "Format:",
-                        value = selectedType,
-                        isActive = selectedType != "All",
-                        hasChevron = true,
-                        onClick = { showTypeMenu = true }
-                    )
-                    DropdownMenu(
-                        expanded = showTypeMenu,
-                        onDismissRequest = { showTypeMenu = false },
-                        modifier = Modifier
-                            .background(SurfaceContainerHigh)
-                            .heightIn(max = 380.dp)
-                    ) {
-                        availableTypes.forEach { type ->
-                            DropdownMenuItem(
-                                text = { Text(type, style = Typography.labelMedium, color = if (selectedType == type) StatusWatching else OnSurface) },
-                                onClick = {
-                                    viewModel.onTypeSelect(type)
-                                    showTypeMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // Season / Musim Chip Dropdown
-                Box {
-                    FilterPill(
-                        label = "Musim:",
-                        value = selectedSeason,
-                        isActive = selectedSeason != "All",
-                        hasChevron = true,
-                        onClick = { showSeasonMenu = true }
-                    )
-                    DropdownMenu(
-                        expanded = showSeasonMenu,
-                        onDismissRequest = { showSeasonMenu = false },
-                        modifier = Modifier
-                            .background(SurfaceContainerHigh)
-                            .heightIn(max = 380.dp)
-                    ) {
-                        availableSeasons.forEach { season ->
-                            DropdownMenuItem(
-                                text = { Text(season, style = Typography.labelMedium, color = if (selectedSeason == season) StatusWatching else OnSurface) },
-                                onClick = {
-                                    viewModel.onSeasonSelect(season)
-                                    showSeasonMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // Status Chip Dropdown
-                Box {
-                    FilterPill(
-                        label = "Status:",
-                        value = selectedStatus,
-                        isActive = selectedStatus != "All",
-                        hasChevron = true,
-                        onClick = { showStatusMenu = true }
-                    )
-                    DropdownMenu(
-                        expanded = showStatusMenu,
-                        onDismissRequest = { showStatusMenu = false },
-                        modifier = Modifier
-                            .background(SurfaceContainerHigh)
-                            .heightIn(max = 380.dp)
-                    ) {
-                        availableStatuses.forEach { status ->
-                            DropdownMenuItem(
-                                text = { Text(status, style = Typography.labelMedium, color = if (selectedStatus == status) StatusWatching else OnSurface) },
-                                onClick = {
-                                    viewModel.onStatusSelect(status)
-                                    showStatusMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // Sort Chip Dropdown
-                Box {
-                    FilterPill(
-                        label = "Urutkan:",
-                        value = selectedSort.displayName,
-                        isActive = selectedSort != AnimeSortOrder.TITLE_ASC,
-                        hasIcon = Icons.Default.SwapVert,
-                        onClick = { showSortMenu = true }
-                    )
-                    DropdownMenu(
-                        expanded = showSortMenu,
-                        onDismissRequest = { showSortMenu = false },
-                        modifier = Modifier.background(SurfaceContainerHigh)
-                    ) {
-                        AnimeSortOrder.entries.forEach { sort ->
-                            DropdownMenuItem(
-                                text = { Text(sort.displayName, style = Typography.labelMedium, color = if (selectedSort == sort) StatusWatching else OnSurface) },
-                                onClick = {
-                                    viewModel.onSortSelect(sort)
-                                    showSortMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // Reset Filter Chip (Only shown when filters or sort are non-default)
-                val hasActiveFilters = selectedGenre != "All" || selectedType != "All" || selectedStatus != "All" || selectedSeason != "All" || selectedSort != AnimeSortOrder.TITLE_ASC
-                if (hasActiveFilters) {
-                    Box(
-                        modifier = Modifier
-                            .clip(PillShape)
-                            .background(StatusWatching.copy(alpha = 0.15f))
-                            .border(1.dp, StatusWatching.copy(alpha = 0.5f), PillShape)
-                            .clickable { viewModel.clearFilters() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                // Row 1: Genre & Format
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Genre Filter
+                    Box(modifier = Modifier.weight(1f)) {
+                        val isGenreActive = selectedGenre != "All"
+                        FixedFilterPill(
+                            label = "Genre",
+                            selectedValue = selectedGenre,
+                            isActive = isGenreActive,
+                            onClick = { showGenreMenu = true }
+                        )
+                        DropdownMenu(
+                            expanded = showGenreMenu,
+                            onDismissRequest = { showGenreMenu = false },
+                            modifier = Modifier
+                                .background(SurfaceContainerHigh)
+                                .heightIn(max = 380.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Reset Filter",
-                                tint = StatusWatching,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "Reset Filter",
-                                style = Typography.labelSmall.copy(fontSize = 11.sp),
-                                color = StatusWatching
-                            )
+                            availableGenres.forEach { genre ->
+                                val isSelected = selectedGenre == genre
+                                val displayText = if (genre == "All") "Semua Genre" else genre
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            displayText,
+                                            style = Typography.labelMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            ),
+                                            color = if (isSelected) StatusWatching else OnSurface
+                                        )
+                                    },
+                                    onClick = {
+                                        viewModel.onGenreSelect(genre)
+                                        showGenreMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Format Filter
+                    Box(modifier = Modifier.weight(1f)) {
+                        val isTypeActive = selectedType != "All"
+                        FixedFilterPill(
+                            label = "Format",
+                            selectedValue = selectedType,
+                            isActive = isTypeActive,
+                            onClick = { showTypeMenu = true }
+                        )
+                        DropdownMenu(
+                            expanded = showTypeMenu,
+                            onDismissRequest = { showTypeMenu = false },
+                            modifier = Modifier
+                                .background(SurfaceContainerHigh)
+                                .heightIn(max = 380.dp)
+                        ) {
+                            availableTypes.forEach { type ->
+                                val isSelected = selectedType == type
+                                val displayText = if (type == "All") "Semua Format" else type
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            displayText,
+                                            style = Typography.labelMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            ),
+                                            color = if (isSelected) StatusWatching else OnSurface
+                                        )
+                                    },
+                                    onClick = {
+                                        viewModel.onTypeSelect(type)
+                                        showTypeMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Row 2: Musim & Status
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Season Filter
+                    Box(modifier = Modifier.weight(1f)) {
+                        val isSeasonActive = selectedSeason != "All"
+                        FixedFilterPill(
+                            label = "Musim",
+                            selectedValue = selectedSeason,
+                            isActive = isSeasonActive,
+                            onClick = { showSeasonMenu = true }
+                        )
+                        DropdownMenu(
+                            expanded = showSeasonMenu,
+                            onDismissRequest = { showSeasonMenu = false },
+                            modifier = Modifier
+                                .background(SurfaceContainerHigh)
+                                .heightIn(max = 380.dp)
+                        ) {
+                            availableSeasons.forEach { season ->
+                                val isSelected = selectedSeason == season
+                                val displayText = if (season == "All") "Semua Musim" else season
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            displayText,
+                                            style = Typography.labelMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            ),
+                                            color = if (isSelected) StatusWatching else OnSurface
+                                        )
+                                    },
+                                    onClick = {
+                                        viewModel.onSeasonSelect(season)
+                                        showSeasonMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Status Filter
+                    Box(modifier = Modifier.weight(1f)) {
+                        val isStatusActive = selectedStatus != "All"
+                        FixedFilterPill(
+                            label = "Status",
+                            selectedValue = selectedStatus,
+                            isActive = isStatusActive,
+                            onClick = { showStatusMenu = true }
+                        )
+                        DropdownMenu(
+                            expanded = showStatusMenu,
+                            onDismissRequest = { showStatusMenu = false },
+                            modifier = Modifier
+                                .background(SurfaceContainerHigh)
+                                .heightIn(max = 380.dp)
+                        ) {
+                            availableStatuses.forEach { status ->
+                                val isSelected = selectedStatus == status
+                                val displayText = if (status == "All") "Semua Status" else status
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            displayText,
+                                            style = Typography.labelMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            ),
+                                            color = if (isSelected) StatusWatching else OnSurface
+                                        )
+                                    },
+                                    onClick = {
+                                        viewModel.onStatusSelect(status)
+                                        showStatusMenu = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            // 4. Result Count & Offline Tag Bar
+            // 4. Result Count, Reset & Sort Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -349,41 +478,110 @@ fun BrowseScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Left: Count + Reset Button
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    val formattedCount = String.format(java.util.Locale("id", "ID"), "%,d", animeList.size)
                     Text(
-                        text = "MENAMPILKAN",
-                        style = Typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.05.sp),
+                        text = "$formattedCount anime",
+                        style = Typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
                         color = OnSurfaceMuted
                     )
-                    Text(
-                        text = "${animeList.size} Hasil",
-                        style = Typography.labelSmall.copy(fontSize = 11.sp),
-                        color = StatusWatching
-                    )
+
+                    if (hasActiveFilters) {
+                        Row(
+                            modifier = Modifier
+                                .clip(PillShape)
+                                .background(StatusWatching.copy(alpha = 0.15f))
+                                .border(0.8.dp, StatusWatching.copy(alpha = 0.6f), PillShape)
+                                .clickable { viewModel.clearFilters() }
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Reset Filter",
+                                tint = StatusWatching,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(
+                                text = "Reset",
+                                style = Typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = StatusWatching
+                            )
+                        }
+                    }
                 }
 
-                Row(
-                    modifier = Modifier
-                        .clip(PillShape)
-                        .background(SurfaceContainer)
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
+                // Right: Sort Dropdown Button
+                Box {
+                    val isCustomSort = selectedSort != AnimeSortOrder.TITLE_ASC
+                    Row(
                         modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(StatusCompleted)
-                    )
-                    Text(
-                        text = "Arsip Offline",
-                        style = Typography.labelSmall.copy(fontSize = 10.sp),
-                        color = OnSurfaceMuted
-                    )
+                            .clip(PillShape)
+                            .background(if (isCustomSort) StatusWatching.copy(alpha = 0.15f) else SurfaceContainer)
+                            .border(
+                                0.8.dp,
+                                if (isCustomSort) StatusWatching.copy(alpha = 0.5f) else Outline.copy(alpha = 0.35f),
+                                PillShape
+                            )
+                            .clickable { showSortMenu = true }
+                            .padding(horizontal = 9.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SwapVert,
+                            contentDescription = "Urutkan",
+                            tint = if (isCustomSort) StatusWatching else OnSurfaceMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = selectedSort.displayName,
+                            style = Typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = if (isCustomSort) FontWeight.SemiBold else FontWeight.Normal
+                            ),
+                            color = if (isCustomSort) StatusWatching else OnSurface
+                        )
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = if (isCustomSort) StatusWatching else OnSurfaceMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false },
+                        modifier = Modifier.background(SurfaceContainerHigh)
+                    ) {
+                        AnimeSortOrder.entries.forEach { sort ->
+                            val isSelected = selectedSort == sort
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        sort.displayName,
+                                        style = Typography.labelMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        ),
+                                        color = if (isSelected) StatusWatching else OnSurface
+                                    )
+                                },
+                                onClick = {
+                                    viewModel.onSortSelect(sort)
+                                    showSortMenu = false
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -452,19 +650,27 @@ fun BrowseScreen(
                     start = Dimens.marginScreen,
                     end = Dimens.marginScreen,
                     top = Dimens.spacingXs,
-                    bottom = Dimens.spacing2Xl
+                    bottom = 100.dp
                 ),
                 horizontalArrangement = Arrangement.spacedBy(Dimens.gutterGrid),
                 verticalArrangement = Arrangement.spacedBy(Dimens.gutterGrid)
             ) {
                 items(
                     items = animeList,
-                    key = { it.id }
+                    key = { "${it.id}_${it.isAdult}" }
                 ) { anime ->
                     AnimePosterGridItem(
                         anime = anime,
-                        onClick = { onAnimeClick(anime.id) },
-                        watchlistStatus = savedWatchlistMap[anime.id]
+                        onClick = { onAnimeClick(anime.id, selectedCatalogType == CatalogType.ADULT) },
+                        watchlistStatus = savedWatchlistMap[anime.id],
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+                            fadeOutSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                            placementSpec = spring(
+                                dampingRatio = 0.82f,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        )
                     )
                 }
             }
@@ -473,51 +679,45 @@ fun BrowseScreen(
 }
 
 @Composable
-private fun FilterPill(
+private fun FixedFilterPill(
     label: String,
-    value: String,
+    selectedValue: String,
     isActive: Boolean,
     onClick: () -> Unit,
-    hasChevron: Boolean = false,
-    hasIcon: androidx.compose.ui.graphics.vector.ImageVector? = null
+    modifier: Modifier = Modifier
 ) {
-    val bg = if (isActive) StatusWatching.copy(alpha = 0.15f) else SurfaceBase
-    val textColor = if (isActive) OnBackground else OnSurface
+    val bg = if (isActive) StatusWatching.copy(alpha = 0.15f) else SurfaceContainer
+    val borderColor = if (isActive) StatusWatching.copy(alpha = 0.6f) else Outline.copy(alpha = 0.35f)
+    val contentColor = if (isActive) StatusWatching else OnSurface
 
     Row(
-        modifier = Modifier
-            .clip(PillShape)
+        modifier = modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .clip(RoundedCornerShape(8.dp))
             .background(bg)
+            .border(0.8.dp, borderColor, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+            .padding(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = label,
-            style = Typography.labelSmall.copy(fontSize = 11.sp),
-            color = if (isActive) StatusWatching else OnSurfaceMuted
+            text = if (isActive) selectedValue else label,
+            style = Typography.labelMedium.copy(
+                fontSize = 11.5.sp,
+                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+            ),
+            color = contentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
         )
-        Text(
-            text = value,
-            style = Typography.labelSmall.copy(fontSize = 11.sp),
-            color = textColor
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowDown,
+            contentDescription = null,
+            tint = if (isActive) StatusWatching else OnSurfaceMuted,
+            modifier = Modifier.size(15.dp)
         )
-        if (hasChevron) {
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = if (isActive) StatusWatching else OnSurfaceMuted,
-                modifier = Modifier.size(14.dp)
-            )
-        }
-        if (hasIcon != null) {
-            Icon(
-                imageVector = hasIcon,
-                contentDescription = null,
-                tint = if (isActive) StatusWatching else OnSurfaceMuted,
-                modifier = Modifier.size(14.dp)
-            )
-        }
     }
 }

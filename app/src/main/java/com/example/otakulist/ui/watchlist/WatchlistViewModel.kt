@@ -15,14 +15,28 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
+
 data class SeasonGroup(
     val season: String,
-    val items: List<WatchlistWithAnime>
+    val items: List<WatchlistWithAnime>,
+    val totalInSeason: Int = items.size
 )
 
+enum class WatchlistCatalogType {
+    REGULAR, ADULT
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class WatchlistViewModel(
     private val repository: AnimeRepository
 ) : ViewModel() {
+
+    private val _selectedCatalogType = MutableStateFlow(WatchlistCatalogType.REGULAR)
+    val selectedCatalogType: StateFlow<WatchlistCatalogType> = _selectedCatalogType.asStateFlow()
+
+    val isAdultContentEnabled: StateFlow<Boolean> = repository.settingsManager.isAdultContentEnabled
 
     private val _selectedSeason = MutableStateFlow("Semua")
     val selectedSeason: StateFlow<String> = _selectedSeason.asStateFlow()
@@ -36,9 +50,47 @@ class WatchlistViewModel(
     private val _expandedSeasons = MutableStateFlow<Set<String>>(emptySet())
     val expandedSeasons: StateFlow<Set<String>> = _expandedSeasons.asStateFlow()
 
-    val allWatchlist = repository.getAllWatchlist()
+    private var hasAutoSelectedInitialTab = false
 
-    // Available seasons present in the user's watchlist
+    val regularCount: StateFlow<Int> = repository.getAllWatchlist(isAdult = false)
+        .map { it.size }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
+        )
+
+    val adultCount: StateFlow<Int> = repository.getAllWatchlist(isAdult = true)
+        .map { it.size }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
+        )
+
+    init {
+        viewModelScope.launch {
+            combine(regularCount, adultCount, isAdultContentEnabled) { regular, adult, enabled ->
+                Triple(regular, adult, enabled)
+            }.collect { (regular, adult, enabled) ->
+                if (!enabled && _selectedCatalogType.value == WatchlistCatalogType.ADULT) {
+                    _selectedCatalogType.value = WatchlistCatalogType.REGULAR
+                } else if (enabled && !hasAutoSelectedInitialTab && regular == 0 && adult > 0) {
+                    hasAutoSelectedInitialTab = true
+                    _selectedCatalogType.value = WatchlistCatalogType.ADULT
+                }
+            }
+        }
+    }
+
+    val isAdultSelected: Boolean
+        get() = _selectedCatalogType.value == WatchlistCatalogType.ADULT
+
+    val allWatchlist = _selectedCatalogType.flatMapLatest { type ->
+        repository.getAllWatchlist(isAdult = type == WatchlistCatalogType.ADULT)
+    }
+
+    // Available seasons present in the user's current watchlist
     val availableSeasons: StateFlow<List<String>> = allWatchlist
         .map { list ->
             val seasons = list.mapNotNull { it.anime.season?.takeIf { s -> s.isNotBlank() } }.distinct()
@@ -90,13 +142,17 @@ class WatchlistViewModel(
             matchesSearch && matchesSeason && matchesStatus
         }
 
+        val totalPerSeason = list.groupBy { it.anime.season?.takeIf { s -> s.isNotBlank() } ?: "Lainnya" }
+            .mapValues { it.value.size }
+
         val seasonOrder = mapOf("Winter" to 1, "Spring" to 2, "Summer" to 3, "Fall" to 4)
         val grouped = filtered.groupBy { it.anime.season?.takeIf { s -> s.isNotBlank() } ?: "Lainnya" }
 
         grouped.map { (seasonName, items) ->
             SeasonGroup(
                 season = seasonName,
-                items = items.sortedBy { it.anime.title }
+                items = items.sortedBy { it.anime.title },
+                totalInSeason = totalPerSeason[seasonName] ?: items.size
             )
         }.sortedWith { a, b ->
             if (a.season == "Lainnya") 1
@@ -145,6 +201,15 @@ class WatchlistViewModel(
             initialValue = 0
         )
 
+    fun selectCatalogType(type: WatchlistCatalogType) {
+        if (type == WatchlistCatalogType.ADULT && !isAdultContentEnabled.value) return
+        if (_selectedCatalogType.value != type) {
+            _selectedCatalogType.value = type
+            _selectedSeason.value = "Semua"
+            _statusFilter.value = "Semua"
+        }
+    }
+
     fun selectSeason(season: String) {
         _selectedSeason.value = season
         if (season != "Semua") {
@@ -180,13 +245,13 @@ class WatchlistViewModel(
 
     fun toggleWatchlistStatus(animeId: Int) {
         viewModelScope.launch {
-            repository.toggleWatchlistStatus(animeId)
+            repository.toggleWatchlistStatus(animeId, isAdult = isAdultSelected)
         }
     }
 
     fun removeFromWatchlist(animeId: Int) {
         viewModelScope.launch {
-            repository.removeFromWatchlist(animeId)
+            repository.removeFromWatchlist(animeId, isAdult = isAdultSelected)
         }
     }
 

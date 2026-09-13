@@ -28,26 +28,29 @@ fun AnimeCoverImage(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     shape: Shape = CardShape,
-    contentScale: ContentScale = ContentScale.Crop
+    contentScale: ContentScale = ContentScale.Crop,
+    isAdult: Boolean = false
 ) {
     val context = LocalContext.current
-    val imagePath = if (!coverFile.isNullOrBlank()) {
-        val baseName = coverFile.trim().substringBeforeLast(".")
-        "file:///android_asset/covers/$baseName.webp"
-    } else {
-        null
+    val folder = if (isAdult) "covers_adult" else "covers"
+    val imagePath = androidx.compose.runtime.remember(coverFile, isAdult) {
+        if (!coverFile.isNullOrBlank()) {
+            val baseName = coverFile.trim().substringBeforeLast(".")
+            "file:///android_asset/$folder/$baseName.webp"
+        } else {
+            null
+        }
+    }
+
+    val request = androidx.compose.runtime.remember(imagePath) {
+        ImageRequest.Builder(context)
+            .data(imagePath)
+            .crossfade(true)
+            .build()
     }
 
     SubcomposeAsyncImage(
-        model = ImageRequest.Builder(context)
-            .data(imagePath)
-            .crossfade(true)
-            .listener(
-                onError = { _, result ->
-                    android.util.Log.e("AnimeCoverImage", "Failed to load $imagePath: ${result.throwable.message}")
-                }
-            )
-            .build(),
+        model = request,
         contentDescription = contentDescription,
         contentScale = contentScale,
         modifier = modifier

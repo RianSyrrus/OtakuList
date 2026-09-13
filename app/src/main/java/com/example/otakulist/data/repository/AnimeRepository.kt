@@ -1,17 +1,27 @@
 package com.example.otakulist.data.repository
 
 import androidx.sqlite.db.SimpleSQLiteQuery
+import com.example.otakulist.data.local.AppSettingsManager
+import com.example.otakulist.data.local.dao.AdultAnimeDao
 import com.example.otakulist.data.local.dao.AnimeDao
+import com.example.otakulist.data.local.dao.WatchlistAdultDao
 import com.example.otakulist.data.local.dao.WatchlistDao
+import com.example.otakulist.data.local.entity.AdultAnimeEntity
 import com.example.otakulist.data.local.entity.AnimeEntity
+import com.example.otakulist.data.local.entity.UserWatchlistAdultEntity
 import com.example.otakulist.data.local.entity.UserWatchlistEntity
 import com.example.otakulist.data.local.entity.WatchlistWithAnime
+import com.example.otakulist.data.local.entity.toAnimeEntity
 import com.example.otakulist.data.model.AnimeSortOrder
 import com.example.otakulist.data.model.WatchlistStatus
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
 data class WatchlistBackupModel(
@@ -20,7 +30,8 @@ data class WatchlistBackupModel(
     val currentEpisode: Int,
     val personalScore: Int,
     val personalNote: String,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val isAdult: Boolean = false
 )
 
 data class StatsModel(
@@ -45,14 +56,46 @@ data class StatsModel(
 class AnimeRepository(
     private val animeDao: AnimeDao,
     private val watchlistDao: WatchlistDao,
+    private val adultAnimeDao: AdultAnimeDao,
+    private val watchlistAdultDao: WatchlistAdultDao,
+    val settingsManager: AppSettingsManager,
     private val gson: Gson = Gson()
 ) {
 
-    fun getAllAnime(): Flow<List<AnimeEntity>> = animeDao.getAllAnime()
+    fun getAllAnime(isAdult: Boolean = false): Flow<List<AnimeEntity>> = 
+        if (isAdult) adultAnimeDao.getAllAdultAnime().map { list -> list.map { it.toAnimeEntity() } }
+        else animeDao.getAllAnime()
 
-    fun getAnimeById(id: Int): Flow<AnimeEntity?> = animeDao.getAnimeById(id)
+    suspend fun resolveIsAdult(animeId: Int, hintIsAdult: Boolean = false): Boolean {
+        return if (hintIsAdult) {
+            if (adultAnimeDao.getAdultAnimeByIdSync(animeId) != null) true
+            else if (animeDao.getAnimeByIdSync(animeId) != null) false
+            else true
+        } else {
+            if (animeDao.getAnimeByIdSync(animeId) != null) false
+            else if (adultAnimeDao.getAdultAnimeByIdSync(animeId) != null) true
+            else false
+        }
+    }
 
-    suspend fun getAnimeByIdSync(id: Int): AnimeEntity? = animeDao.getAnimeByIdSync(id)
+    fun getAnimeById(id: Int, isAdult: Boolean = false): Flow<AnimeEntity?> = flow {
+        val targetIsAdult = resolveIsAdult(id, isAdult)
+        val sourceFlow = if (targetIsAdult) {
+            adultAnimeDao.getAdultAnimeById(id).map { it?.toAnimeEntity() }
+        } else {
+            animeDao.getAnimeById(id)
+        }
+        emitAll(sourceFlow)
+    }.flowOn(Dispatchers.IO)
+
+    suspend fun getAnimeByIdSync(id: Int, isAdult: Boolean = false): AnimeEntity? {
+        val targetIsAdult = resolveIsAdult(id, isAdult)
+        return if (targetIsAdult) {
+            adultAnimeDao.getAdultAnimeByIdSync(id)?.toAnimeEntity()
+        } else {
+            animeDao.getAnimeByIdSync(id)
+        }
+    }
 
     fun searchAndFilterAnime(
         query: String = "",
@@ -60,7 +103,8 @@ class AnimeRepository(
         selectedType: String? = null,
         selectedStatus: String? = null,
         selectedSeason: String? = null,
-        sortOrder: AnimeSortOrder = AnimeSortOrder.TITLE_ASC
+        sortOrder: AnimeSortOrder = AnimeSortOrder.TITLE_ASC,
+        isAdult: Boolean = false
     ): Flow<List<AnimeEntity>> {
         val conditions = mutableListOf<String>()
         val bindArgs = mutableListOf<Any>()
@@ -105,59 +149,104 @@ class AnimeRepository(
             AnimeSortOrder.TITLE_ASC -> "ORDER BY title COLLATE NOCASE ASC"
         }
 
-        val sql = "SELECT * FROM anime $whereClause $orderClause"
+        val tableName = if (isAdult) "adult_anime" else "anime"
+        val sql = "SELECT * FROM $tableName $whereClause $orderClause"
         val sqLiteQuery = SimpleSQLiteQuery(sql, bindArgs.toTypedArray())
-        return animeDao.queryAnime(sqLiteQuery)
-    }
-
-    fun getAllSeasons(): Flow<List<String>> = animeDao.getAllSeasons().map { rawSeasons ->
-        val seasonOrder = mapOf("Winter" to 1, "Spring" to 2, "Summer" to 3, "Fall" to 4)
-        rawSeasons.sortedWith { a, b ->
-            val partsA = a.split(" ")
-            val partsB = b.split(" ")
-            val yearA = partsA.getOrNull(1)?.toIntOrNull() ?: 0
-            val yearB = partsB.getOrNull(1)?.toIntOrNull() ?: 0
-            if (yearA != yearB) {
-                yearB.compareTo(yearA)
-            } else {
-                val orderA = seasonOrder[partsA.getOrNull(0)] ?: 0
-                val orderB = seasonOrder[partsB.getOrNull(0)] ?: 0
-                orderB.compareTo(orderA)
-            }
+        return if (isAdult) {
+            adultAnimeDao.queryAdultAnime(sqLiteQuery).map { list -> list.map { it.toAnimeEntity() } }
+        } else {
+            animeDao.queryAnime(sqLiteQuery)
         }
     }
 
-    fun getAllGenres(): Flow<List<String>> = animeDao.getAllRawGenres().map { rawList ->
-        val genreSet = sortedSetOf<String>()
-        for (raw in rawList) {
-            for (g in raw.split(",")) {
-                val trimmed = g.trim()
-                if (trimmed.isNotEmpty()) {
-                    genreSet.add(trimmed)
+    fun getAllSeasons(isAdult: Boolean = false): Flow<List<String>> = 
+        (if (isAdult) adultAnimeDao.getAllSeasons() else animeDao.getAllSeasons()).map { rawSeasons ->
+            val seasonOrder = mapOf("Winter" to 1, "Spring" to 2, "Summer" to 3, "Fall" to 4)
+            rawSeasons.sortedWith { a, b ->
+                val partsA = a.split(" ")
+                val partsB = b.split(" ")
+                val yearA = partsA.getOrNull(1)?.toIntOrNull() ?: 0
+                val yearB = partsB.getOrNull(1)?.toIntOrNull() ?: 0
+                if (yearA != yearB) {
+                    yearB.compareTo(yearA)
+                } else {
+                    val orderA = seasonOrder[partsA.getOrNull(0)] ?: 0
+                    val orderB = seasonOrder[partsB.getOrNull(0)] ?: 0
+                    orderB.compareTo(orderA)
                 }
             }
         }
-        genreSet.toList()
+
+    fun getAllGenres(isAdult: Boolean = false): Flow<List<String>> = 
+        (if (isAdult) adultAnimeDao.getAllRawGenres() else animeDao.getAllRawGenres()).map { rawList ->
+            val genreSet = sortedSetOf<String>()
+            for (raw in rawList) {
+                for (g in raw.split(",")) {
+                    val trimmed = g.trim()
+                    if (trimmed.isNotEmpty()) {
+                        genreSet.add(trimmed)
+                    }
+                }
+            }
+            genreSet.toList()
+        }
+
+    fun getAllTypes(isAdult: Boolean = false): Flow<List<String>> = 
+        if (isAdult) adultAnimeDao.getAllTypes() else animeDao.getAllTypes()
+
+    fun getAllStatuses(isAdult: Boolean = false): Flow<List<String>> = 
+        if (isAdult) adultAnimeDao.getAllStatuses() else animeDao.getAllStatuses()
+
+    fun getWatchlistByStatus(status: WatchlistStatus, isAdult: Boolean = false): Flow<List<WatchlistWithAnime>> {
+        return if (isAdult) {
+            watchlistAdultDao.getWatchlistByStatus(status.value).map { list -> list.map { it.toWatchlistWithAnime() } }
+        } else {
+            watchlistDao.getWatchlistByStatus(status.value)
+        }
     }
 
-    fun getAllTypes(): Flow<List<String>> = animeDao.getAllTypes()
-
-    fun getAllStatuses(): Flow<List<String>> = animeDao.getAllStatuses()
-
-    fun getWatchlistByStatus(status: WatchlistStatus): Flow<List<WatchlistWithAnime>> {
-        return watchlistDao.getWatchlistByStatus(status.value)
+    fun getWatchlistCount(status: WatchlistStatus, isAdult: Boolean = false): Flow<Int> {
+        return if (isAdult) watchlistAdultDao.getCountByStatus(status.value)
+        else watchlistDao.getCountByStatus(status.value)
     }
 
-    fun getWatchlistCount(status: WatchlistStatus): Flow<Int> {
-        return watchlistDao.getCountByStatus(status.value)
-    }
+    fun getWatchlistEntry(animeId: Int, isAdult: Boolean = false): Flow<UserWatchlistEntity?> = flow {
+        val targetIsAdult = resolveIsAdult(animeId, isAdult)
+        val sourceFlow = if (targetIsAdult) {
+            watchlistAdultDao.getWatchlistEntry(animeId).map { adultEntry ->
+                adultEntry?.let {
+                    UserWatchlistEntity(
+                        animeId = it.animeId,
+                        status = it.status,
+                        currentEpisode = it.currentEpisode,
+                        personalScore = it.personalScore,
+                        personalNote = it.personalNote,
+                        updatedAt = it.updatedAt
+                    )
+                }
+            }
+        } else {
+            watchlistDao.getWatchlistEntry(animeId)
+        }
+        emitAll(sourceFlow)
+    }.flowOn(Dispatchers.IO)
 
-    fun getWatchlistEntry(animeId: Int): Flow<UserWatchlistEntity?> {
-        return watchlistDao.getWatchlistEntry(animeId)
-    }
-
-    suspend fun getWatchlistEntrySync(animeId: Int): UserWatchlistEntity? {
-        return watchlistDao.getWatchlistEntrySync(animeId)
+    suspend fun getWatchlistEntrySync(animeId: Int, isAdult: Boolean = false): UserWatchlistEntity? {
+        val targetIsAdult = resolveIsAdult(animeId, isAdult)
+        return if (targetIsAdult) {
+            watchlistAdultDao.getWatchlistEntrySync(animeId)?.let {
+                UserWatchlistEntity(
+                    animeId = it.animeId,
+                    status = it.status,
+                    currentEpisode = it.currentEpisode,
+                    personalScore = it.personalScore,
+                    personalNote = it.personalNote,
+                    updatedAt = it.updatedAt
+                )
+            }
+        } else {
+            watchlistDao.getWatchlistEntrySync(animeId)
+        }
     }
 
     suspend fun saveToWatchlist(
@@ -165,73 +254,99 @@ class AnimeRepository(
         status: WatchlistStatus,
         currentEpisode: Int = 0,
         personalScore: Int = 0,
-        personalNote: String = ""
+        personalNote: String = "",
+        isAdult: Boolean = false
     ) {
-        val entry = UserWatchlistEntity(
-            animeId = animeId,
-            status = status.value,
-            currentEpisode = currentEpisode,
-            personalScore = personalScore,
-            personalNote = personalNote,
-            updatedAt = System.currentTimeMillis()
-        )
-        watchlistDao.upsertWatchlist(entry)
+        val targetIsAdult = resolveIsAdult(animeId, isAdult)
+        try {
+            if (targetIsAdult) {
+                val entry = UserWatchlistAdultEntity(
+                    animeId = animeId,
+                    status = status.value,
+                    currentEpisode = currentEpisode,
+                    personalScore = personalScore,
+                    personalNote = personalNote,
+                    updatedAt = System.currentTimeMillis()
+                )
+                watchlistAdultDao.upsertWatchlist(entry)
+            } else {
+                val entry = UserWatchlistEntity(
+                    animeId = animeId,
+                    status = status.value,
+                    currentEpisode = currentEpisode,
+                    personalScore = personalScore,
+                    personalNote = personalNote,
+                    updatedAt = System.currentTimeMillis()
+                )
+                watchlistDao.upsertWatchlist(entry)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AnimeRepository", "Error saving to watchlist: animeId=$animeId, targetIsAdult=$targetIsAdult", e)
+        }
     }
 
-    suspend fun incrementEpisode(animeId: Int): Boolean {
-        val entry = watchlistDao.getWatchlistEntrySync(animeId) ?: return false
-        val anime = animeDao.getAnimeByIdSync(animeId)
-        val maxEpisodes = anime?.episodes?.toIntOrNull()
-
-        val nextEp = entry.currentEpisode + 1
-        if (maxEpisodes != null && nextEp > maxEpisodes) {
-            return false
-        }
-
-        val newStatus = if (maxEpisodes != null && nextEp >= maxEpisodes) {
-            WatchlistStatus.COMPLETED.value
+    fun getAllWatchlist(isAdult: Boolean = false): Flow<List<WatchlistWithAnime>> {
+        return if (isAdult) {
+            watchlistAdultDao.getAllWatchlist().map { list -> list.map { it.toWatchlistWithAnime() } }
         } else {
-            entry.status
+            watchlistDao.getAllWatchlist()
         }
-
-        watchlistDao.upsertWatchlist(
-            entry.copy(
-                currentEpisode = nextEp,
-                status = newStatus,
-                updatedAt = System.currentTimeMillis()
-            )
-        )
-        return true
     }
 
-    fun getAllWatchlist(): Flow<List<WatchlistWithAnime>> {
-        return watchlistDao.getAllWatchlist()
-    }
-
-    suspend fun removeFromWatchlist(animeId: Int) {
+    suspend fun removeFromWatchlist(animeId: Int, isAdult: Boolean = false) {
+        watchlistAdultDao.removeFromWatchlist(animeId)
         watchlistDao.removeFromWatchlist(animeId)
     }
 
-    suspend fun toggleWatchlistStatus(animeId: Int) {
-        val entry = watchlistDao.getWatchlistEntrySync(animeId)
-        if (entry != null) {
-            val nextStatus = if (entry.status == WatchlistStatus.SUDAH.value || entry.status == "COMPLETED") {
-                WatchlistStatus.BELUM.value
-            } else {
-                WatchlistStatus.SUDAH.value
-            }
-            watchlistDao.upsertWatchlist(
-                entry.copy(
-                    status = nextStatus,
-                    updatedAt = System.currentTimeMillis()
+    suspend fun toggleWatchlistStatus(animeId: Int, isAdult: Boolean = false) {
+        val targetIsAdult = resolveIsAdult(animeId, isAdult)
+        if (targetIsAdult) {
+            val entry = watchlistAdultDao.getWatchlistEntrySync(animeId)
+            if (entry != null) {
+                val nextStatus = if (entry.status == WatchlistStatus.SUDAH.value || entry.status == "COMPLETED") {
+                    WatchlistStatus.BELUM.value
+                } else {
+                    WatchlistStatus.SUDAH.value
+                }
+                watchlistAdultDao.upsertWatchlist(
+                    entry.copy(
+                        status = nextStatus,
+                        updatedAt = System.currentTimeMillis()
+                    )
                 )
-            )
+            } else {
+                saveToWatchlist(animeId = animeId, status = WatchlistStatus.BELUM, isAdult = true)
+            }
         } else {
-            saveToWatchlist(animeId = animeId, status = WatchlistStatus.BELUM)
+            val entry = watchlistDao.getWatchlistEntrySync(animeId)
+            if (entry != null) {
+                val nextStatus = if (entry.status == WatchlistStatus.SUDAH.value || entry.status == "COMPLETED") {
+                    WatchlistStatus.BELUM.value
+                } else {
+                    WatchlistStatus.SUDAH.value
+                }
+                watchlistDao.upsertWatchlist(
+                    entry.copy(
+                        status = nextStatus,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            } else {
+                saveToWatchlist(animeId = animeId, status = WatchlistStatus.BELUM, isAdult = false)
+            }
         }
     }
 
-    fun getStats(): Flow<StatsModel> = watchlistDao.getAllWatchlist().map { allEntries ->
+    fun getStats(): Flow<StatsModel> = combine(
+        watchlistDao.getAllWatchlist(),
+        watchlistAdultDao.getAllWatchlist(),
+        settingsManager.isAdultContentEnabled
+    ) { regularEntries, adultEntries, isAdultEnabled ->
+        val allEntries = if (isAdultEnabled) {
+            regularEntries + adultEntries.map { it.toWatchlistWithAnime() }
+        } else {
+            regularEntries
+        }
         var sudahCount = 0
         var belumCount = 0
         var watchingCount = 0
@@ -305,21 +420,32 @@ class AnimeRepository(
             busiestYear = topYearEntry?.key ?: "-",
             busiestYearCount = topYearEntry?.value ?: 0
         )
-    }
+    }.flowOn(Dispatchers.Default)
 
     suspend fun exportWatchlistJson(): String {
-        val all = watchlistDao.getAllWatchlistSync()
-        val models = all.map {
+        val regularList = watchlistDao.getAllWatchlistSync().map {
             WatchlistBackupModel(
                 animeId = it.watchlist.animeId,
                 status = it.watchlist.status,
                 currentEpisode = it.watchlist.currentEpisode,
                 personalScore = it.watchlist.personalScore,
                 personalNote = it.watchlist.personalNote,
-                updatedAt = it.watchlist.updatedAt
+                updatedAt = it.watchlist.updatedAt,
+                isAdult = false
             )
         }
-        return gson.toJson(models)
+        val adultList = watchlistAdultDao.getAllWatchlistSync().map {
+            WatchlistBackupModel(
+                animeId = it.watchlist.animeId,
+                status = it.watchlist.status,
+                currentEpisode = it.watchlist.currentEpisode,
+                personalScore = it.watchlist.personalScore,
+                personalNote = it.watchlist.personalNote,
+                updatedAt = it.watchlist.updatedAt,
+                isAdult = true
+            )
+        }
+        return gson.toJson(regularList + adultList)
     }
 
     suspend fun importWatchlistJson(json: String): Result<Int> {
@@ -328,19 +454,44 @@ class AnimeRepository(
             val list: List<WatchlistBackupModel> = gson.fromJson(json, type)
             var count = 0
             for (item in list) {
-                watchlistDao.upsertWatchlist(
-                    UserWatchlistEntity(
-                        animeId = item.animeId,
-                        status = item.status,
-                        currentEpisode = item.currentEpisode,
-                        personalScore = item.personalScore,
-                        personalNote = item.personalNote,
-                        updatedAt = item.updatedAt
+                val targetIsAdult = resolveIsAdult(item.animeId, item.isAdult)
+                if (targetIsAdult) {
+                    watchlistAdultDao.upsertWatchlist(
+                        UserWatchlistAdultEntity(
+                            animeId = item.animeId,
+                            status = item.status,
+                            currentEpisode = item.currentEpisode,
+                            personalScore = item.personalScore,
+                            personalNote = item.personalNote,
+                            updatedAt = item.updatedAt
+                        )
                     )
-                )
+                } else {
+                    watchlistDao.upsertWatchlist(
+                        UserWatchlistEntity(
+                            animeId = item.animeId,
+                            status = item.status,
+                            currentEpisode = item.currentEpisode,
+                            personalScore = item.personalScore,
+                            personalNote = item.personalNote,
+                            updatedAt = item.updatedAt
+                        )
+                    )
+                }
                 count++
             }
             count
+        }
+    }
+
+    suspend fun clearWatchlist(isAdult: Boolean? = null) {
+        when (isAdult) {
+            true -> watchlistAdultDao.clearAll()
+            false -> watchlistDao.clearAll()
+            null -> {
+                watchlistDao.clearAll()
+                watchlistAdultDao.clearAll()
+            }
         }
     }
 }

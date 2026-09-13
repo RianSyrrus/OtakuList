@@ -17,7 +17,12 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.stateIn
+
+enum class CatalogType {
+    REGULAR, ADULT
+}
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class BrowseViewModel(
@@ -26,6 +31,11 @@ class BrowseViewModel(
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _selectedCatalogType = MutableStateFlow(CatalogType.REGULAR)
+    val selectedCatalogType: StateFlow<CatalogType> = _selectedCatalogType.asStateFlow()
+
+    val isAdultContentEnabled: StateFlow<Boolean> = repository.settingsManager.isAdultContentEnabled
 
     private val _selectedGenre = MutableStateFlow("All")
     val selectedGenre: StateFlow<String> = _selectedGenre.asStateFlow()
@@ -42,41 +52,66 @@ class BrowseViewModel(
     private val _selectedSort = MutableStateFlow(AnimeSortOrder.TITLE_ASC)
     val selectedSort: StateFlow<AnimeSortOrder> = _selectedSort.asStateFlow()
 
-    val availableGenres: StateFlow<List<String>> = repository.getAllGenres()
-        .map { listOf("All") + it }
+    init {
+        viewModelScope.launch {
+            isAdultContentEnabled.collect { enabled ->
+                if (!enabled && _selectedCatalogType.value == CatalogType.ADULT) {
+                    _selectedCatalogType.value = CatalogType.REGULAR
+                }
+            }
+        }
+    }
+
+    val availableGenres: StateFlow<List<String>> = _selectedCatalogType
+        .flatMapLatest { catalogType ->
+            repository.getAllGenres(isAdult = catalogType == CatalogType.ADULT)
+                .map { listOf("All") + it }
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = listOf("All") + DEFAULT_GENRES
         )
 
-    val availableTypes: StateFlow<List<String>> = repository.getAllTypes()
-        .map { listOf("All") + it }
+    val availableTypes: StateFlow<List<String>> = _selectedCatalogType
+        .flatMapLatest { catalogType ->
+            repository.getAllTypes(isAdult = catalogType == CatalogType.ADULT)
+                .map { listOf("All") + it }
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = listOf("All", "TV", "Movie", "OVA", "ONA", "Special", "TV Special", "Music")
         )
 
-    val availableStatuses: StateFlow<List<String>> = repository.getAllStatuses()
-        .map { listOf("All") + it }
+    val availableStatuses: StateFlow<List<String>> = _selectedCatalogType
+        .flatMapLatest { catalogType ->
+            repository.getAllStatuses(isAdult = catalogType == CatalogType.ADULT)
+                .map { listOf("All") + it }
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = listOf("All", "Sedang Tayang", "Selesai Tayang", "Akan Tayang")
         )
 
-    val availableSeasons: StateFlow<List<String>> = repository.getAllSeasons()
-        .map { listOf("All") + it }
+    val availableSeasons: StateFlow<List<String>> = _selectedCatalogType
+        .flatMapLatest { catalogType ->
+            repository.getAllSeasons(isAdult = catalogType == CatalogType.ADULT)
+                .map { listOf("All") + it }
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = listOf("All")
         )
 
-    val savedWatchlistMap: StateFlow<Map<Int, WatchlistStatus>> = repository.getAllWatchlist()
-        .map { list ->
-            list.associate { it.watchlist.animeId to WatchlistStatus.fromValue(it.watchlist.status) }
+    val savedWatchlistMap: StateFlow<Map<Int, WatchlistStatus>> = _selectedCatalogType
+        .flatMapLatest { catalogType ->
+            repository.getAllWatchlist(isAdult = catalogType == CatalogType.ADULT)
+                .map { list ->
+                    list.associate { it.watchlist.animeId to WatchlistStatus.fromValue(it.watchlist.status) }
+                }
         }
         .stateIn(
             scope = viewModelScope,
@@ -104,9 +139,18 @@ class BrowseViewModel(
 
     val animeList: StateFlow<List<AnimeEntity>> = combine(
         _searchQuery.debounce(250),
+        _selectedCatalogType,
         filterState
-    ) { query, filters ->
-        FilterParams(query, filters.genre, filters.type, filters.status, filters.season, filters.sort)
+    ) { query, catalogType, filters ->
+        FilterParams(
+            query = query,
+            genre = filters.genre,
+            type = filters.type,
+            status = filters.status,
+            season = filters.season,
+            sort = filters.sort,
+            catalogType = catalogType
+        )
     }.flatMapLatest { params ->
         repository.searchAndFilterAnime(
             query = params.query,
@@ -114,13 +158,25 @@ class BrowseViewModel(
             selectedType = params.type,
             selectedStatus = params.status,
             selectedSeason = params.season,
-            sortOrder = params.sort
+            sortOrder = params.sort,
+            isAdult = params.catalogType == CatalogType.ADULT
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    fun onCatalogTypeSelect(type: CatalogType) {
+        if (type == CatalogType.ADULT && !isAdultContentEnabled.value) return
+        if (_selectedCatalogType.value != type) {
+            _selectedCatalogType.value = type
+            _selectedGenre.value = "All"
+            _selectedType.value = "All"
+            _selectedStatus.value = "All"
+            _selectedSeason.value = "All"
+        }
+    }
 
     fun onQueryChange(query: String) {
         _searchQuery.value = query
@@ -155,13 +211,33 @@ class BrowseViewModel(
         _selectedSort.value = AnimeSortOrder.TITLE_ASC
     }
 
+    fun toggleWatchlist(animeId: Int, isAdult: Boolean): Boolean {
+        val isCurrentlySaved = savedWatchlistMap.value.containsKey(animeId)
+        viewModelScope.launch {
+            if (isCurrentlySaved) {
+                repository.removeFromWatchlist(animeId, isAdult)
+            } else {
+                repository.saveToWatchlist(
+                    animeId = animeId,
+                    status = WatchlistStatus.BELUM,
+                    currentEpisode = 0,
+                    personalScore = 0,
+                    personalNote = "",
+                    isAdult = isAdult
+                )
+            }
+        }
+        return !isCurrentlySaved
+    }
+
     private data class FilterParams(
         val query: String,
         val genre: String,
         val type: String,
         val status: String,
         val season: String,
-        val sort: AnimeSortOrder
+        val sort: AnimeSortOrder,
+        val catalogType: CatalogType
     )
 
     companion object {

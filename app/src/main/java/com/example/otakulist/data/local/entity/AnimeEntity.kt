@@ -34,7 +34,41 @@ data class AnimeEntity(
     val createdAt: String? = null,
     @ColumnInfo(name = "related_anime")
     val relatedAnime: String? = null
-)
+) {
+    @androidx.room.Ignore
+    var isAdult: Boolean = false
+
+    @androidx.room.Ignore
+    constructor(
+        id: Int,
+        title: String,
+        japaneseTitle: String? = null,
+        englishTitle: String? = null,
+        slug: String? = null,
+        type: String? = null,
+        status: String? = null,
+        season: String? = null,
+        episodes: String? = null,
+        duration: String? = null,
+        rating: String? = null,
+        score: String? = null,
+        genres: String? = null,
+        studios: String? = null,
+        synopsis: String? = null,
+        coverUrl: String? = null,
+        coverFile: String? = null,
+        otakUrl: String? = null,
+        createdAt: String? = null,
+        relatedAnime: String? = null,
+        isAdult: Boolean
+    ) : this(
+        id, title, japaneseTitle, englishTitle, slug, type, status, season,
+        episodes, duration, rating, score, genres, studios, synopsis,
+        coverUrl, coverFile, otakUrl, createdAt, relatedAnime
+    ) {
+        this.isAdult = isAdult
+    }
+}
 
 data class RelatedAnimeItem(
     val id: Int,
@@ -50,5 +84,23 @@ fun AnimeEntity.getParsedRelatedAnime(): List<RelatedAnimeItem> {
     } catch (_: Exception) {
         emptyList()
     }
+}
+
+fun AnimeEntity.getPrimaryStudio(): String? {
+    if (studios.isNullOrBlank()) return null
+    return studios
+        .split(",")
+        .map { it.trim() }
+        .firstOrNull { it.isNotBlank() && it != "-" }
+}
+
+fun AnimeEntity.getProducers(): String? {
+    if (studios.isNullOrBlank()) return null
+    val parts = studios
+        .split(",")
+        .map { it.trim() }
+        .filter { it.isNotBlank() && it != "-" }
+    if (parts.size <= 1) return null
+    return parts.drop(1).joinToString(", ")
 }
 
