@@ -9,9 +9,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+import com.example.otakulist.data.model.SyncManifestDto
+import com.example.otakulist.data.model.SyncProgress
+import com.example.otakulist.data.model.SyncSummary
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+
+sealed interface SyncUiState {
+    data object Idle : SyncUiState
+    data object Checking : SyncUiState
+    data class ManifestReady(val manifest: SyncManifestDto, val isUpToDate: Boolean) : SyncUiState
+    data class Syncing(val stageText: String, val progressFraction: Float? = null) : SyncUiState
+    data class Success(val summary: SyncSummary) : SyncUiState
+    data class Error(val errorMessage: String) : SyncUiState
+}
 
 class SettingsViewModel(
     private val repository: AnimeRepository
@@ -53,6 +65,70 @@ class SettingsViewModel(
 
     private val _actionFeedback = MutableStateFlow<String?>(null)
     val actionFeedback: StateFlow<String?> = _actionFeedback.asStateFlow()
+
+    val syncServerHost: StateFlow<String> = repository.settingsManager.syncServerHost
+    val catalogVersion: StateFlow<String> = repository.settingsManager.catalogVersion
+
+    private val _syncUiState = MutableStateFlow<SyncUiState>(SyncUiState.Idle)
+    val syncUiState: StateFlow<SyncUiState> = _syncUiState.asStateFlow()
+
+    fun setSyncServerHost(host: String) {
+        repository.settingsManager.setSyncServerHost(host)
+    }
+
+    fun checkServerUpdate() {
+        val host = syncServerHost.value
+        viewModelScope.launch {
+            _syncUiState.value = SyncUiState.Checking
+            val result = repository.checkLocalSyncManifest(host)
+            result.fold(
+                onSuccess = { manifest ->
+                    val isUpToDate = manifest.catalogVersion == catalogVersion.value &&
+                            manifest.newRegularCount == 0 && manifest.newAdultCount == 0
+                    _syncUiState.value = SyncUiState.ManifestReady(manifest, isUpToDate)
+                },
+                onFailure = { error ->
+                    _syncUiState.value = SyncUiState.Error(error.localizedMessage ?: "Gagal terhubung ke server PC")
+                }
+            )
+        }
+    }
+
+    fun startSync() {
+        val host = syncServerHost.value
+        viewModelScope.launch {
+            _syncUiState.value = SyncUiState.Syncing("Menghubungi server PC...")
+            val result = repository.syncFromLocalServer(host) { progress ->
+                when (progress) {
+                    is SyncProgress.Connecting -> _syncUiState.value = SyncUiState.Syncing("Menghubungi server PC...")
+                    is SyncProgress.CheckingManifest -> _syncUiState.value = SyncUiState.Syncing("Memeriksa indeks pembaruan...")
+                    is SyncProgress.DownloadingPatch -> _syncUiState.value = SyncUiState.Syncing(progress.stage)
+                    is SyncProgress.DownloadingCovers -> _syncUiState.value = SyncUiState.Syncing(
+                        "Mengunduh gambar cover (${(progress.progressPercent * 100).toInt()}%)",
+                        progress.progressPercent
+                    )
+                    is SyncProgress.ExtractingCovers -> _syncUiState.value = SyncUiState.Syncing(
+                        "Mengekstrak gambar (${progress.current}/${progress.total})"
+                    )
+                    is SyncProgress.WritingDatabase -> _syncUiState.value = SyncUiState.Syncing("Menyimpan ke basis data...")
+                    is SyncProgress.Finished -> _syncUiState.value = SyncUiState.Syncing("Sinkronisasi rampung!")
+                }
+            }
+
+            result.fold(
+                onSuccess = { summary ->
+                    _syncUiState.value = SyncUiState.Success(summary)
+                },
+                onFailure = { error ->
+                    _syncUiState.value = SyncUiState.Error(error.localizedMessage ?: "Terjadi kesalahan saat sinkronisasi")
+                }
+            )
+        }
+    }
+
+    fun resetSyncState() {
+        _syncUiState.value = SyncUiState.Idle
+    }
 
     fun setAdultContentEnabled(enabled: Boolean) {
         repository.settingsManager.setAdultContentEnabled(enabled)

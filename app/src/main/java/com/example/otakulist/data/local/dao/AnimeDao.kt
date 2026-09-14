@@ -3,6 +3,7 @@ package com.example.otakulist.data.local.dao
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.RawQuery
+import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import com.example.otakulist.data.local.entity.AnimeEntity
 import kotlinx.coroutines.flow.Flow
@@ -45,4 +46,10 @@ interface AnimeDao {
 
     @Query("SELECT DISTINCT status FROM anime WHERE status IS NOT NULL AND status != '' ORDER BY status ASC")
     fun getAllStatuses(): Flow<List<String>>
+
+    @Upsert
+    suspend fun upsertAll(animeList: List<AnimeEntity>)
+
+    @Upsert
+    suspend fun upsert(anime: AnimeEntity)
 }

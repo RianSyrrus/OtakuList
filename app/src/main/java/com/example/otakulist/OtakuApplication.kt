@@ -11,6 +11,7 @@ class OtakuApplication : Application() {
     val settingsManager: AppSettingsManager by lazy { AppSettingsManager.getInstance(this) }
     val repository: AnimeRepository by lazy {
         AnimeRepository(
+            context = this,
             database = database,
             animeDao = database.animeDao(),
             watchlistDao = database.watchlistDao(),

@@ -8,4 +8,15 @@
     <string name="backup_file_saved">Backup file saved successfully!</string>
     <string name="backup_file_save_failed">Failed to save backup file.</string>
     <string name="backup_file_read_failed">Failed to read selected JSON file.</string>
+    <string name="sync_wifi_title">Local WiFi Sync</string>
+    <string name="sync_wifi_subtitle">Sync anime catalog directly from your PC</string>
+    <string name="sync_dialog_title">PC Catalog Sync</string>
+    <string name="sync_server_ip_label">PC Server Address</string>
+    <string name="sync_server_ip_placeholder">e.g. 192.168.1.15:8080</string>
+    <string name="sync_check_button">Check Updates</string>
+    <string name="sync_start_button">Start Sync</string>
+    <string name="sync_catalog_up_to_date">Catalog is already up to date (%1$s).</string>
+    <string name="sync_update_available">Update available (%1$s): %2$d regular, %3$d adult titles, %4$d covers (%5$.1f MB).</string>
+    <string name="sync_success_message">Sync finished! Updated %1$d regular, %2$d adult, and %3$d covers.</string>
+    <string name="sync_error_prefix">Sync failed: %1$s</string>
 </resources>

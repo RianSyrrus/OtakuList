@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.outlined.BrightnessAuto
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
@@ -52,14 +53,17 @@ import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -122,6 +126,13 @@ fun SettingsScreen(
     val exportJson by viewModel.exportJson.collectAsState()
     val importMessage by viewModel.importMessage.collectAsState()
     val actionFeedback by viewModel.actionFeedback.collectAsState()
+
+    val syncServerHost by viewModel.syncServerHost.collectAsState()
+    val syncUiState by viewModel.syncUiState.collectAsState()
+    val catalogVersion by viewModel.catalogVersion.collectAsState()
+
+    var showSyncDialog by remember { mutableStateOf(false) }
+    var serverHostInput by remember(syncServerHost) { mutableStateOf(syncServerHost) }
 
     var showImportDialog by remember { mutableStateOf(false) }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
@@ -542,6 +553,19 @@ fun SettingsScreen(
                 )
 
                 SettingsActionRow(
+                    icon = Icons.Default.Wifi,
+                    title = stringResource(R.string.sync_wifi_title),
+                    subtitle = stringResource(R.string.sync_wifi_subtitle),
+                    onClick = { showSyncDialog = true }
+                )
+
+                HorizontalDivider(
+                    color = OtakuTheme.colors.outline.copy(alpha = 0.15f),
+                    thickness = 0.8.dp,
+                    modifier = Modifier.padding(horizontal = Dimens.spacingMd)
+                )
+
+                SettingsActionRow(
                     icon = Icons.Default.DeleteSweep,
                     iconTint = Error,
                     title = "Kosongkan Watchlist",
@@ -557,6 +581,18 @@ fun SettingsScreen(
                     icon = Icons.Default.Info,
                     title = "Versi Aplikasi",
                     value = "v${BuildConfig.VERSION_NAME}"
+                )
+
+                HorizontalDivider(
+                    color = OtakuTheme.colors.outline.copy(alpha = 0.15f),
+                    thickness = 0.8.dp,
+                    modifier = Modifier.padding(horizontal = Dimens.spacingMd)
+                )
+
+                SettingsInfoRow(
+                    icon = Icons.Default.Dataset,
+                    title = "Versi Katalog",
+                    value = "v$catalogVersion"
                 )
 
                 HorizontalDivider(
@@ -1152,6 +1188,263 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showCustomColorDialog = false }) {
                     Text("Batal", color = OtakuTheme.colors.onSurfaceMuted)
+                }
+            }
+        )
+    }
+
+    // Local WiFi Sync Dialog
+    if (showSyncDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (syncUiState !is SyncUiState.Syncing) {
+                    showSyncDialog = false
+                    viewModel.resetSyncState()
+                }
+            },
+            containerColor = OtakuTheme.colors.surfaceBase,
+            shape = RoundedCornerShape(16.dp),
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Wifi,
+                    contentDescription = null,
+                    tint = OtakuTheme.colors.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.sync_dialog_title),
+                    style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = OtakuTheme.colors.onSurface
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(Dimens.spacingMd),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = serverHostInput,
+                        onValueChange = {
+                            serverHostInput = it
+                            viewModel.setSyncServerHost(it)
+                        },
+                        label = { Text(text = stringResource(R.string.sync_server_ip_label), style = Typography.bodySmall) },
+                        placeholder = { Text(text = stringResource(R.string.sync_server_ip_placeholder), style = Typography.bodySmall) },
+                        enabled = syncUiState !is SyncUiState.Syncing,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = OtakuTheme.colors.surfaceVariant,
+                            unfocusedContainerColor = OtakuTheme.colors.surfaceVariant,
+                            focusedTextColor = OtakuTheme.colors.onBackground,
+                            unfocusedTextColor = OtakuTheme.colors.onBackground,
+                            focusedBorderColor = OtakuTheme.colors.primary,
+                            unfocusedBorderColor = OtakuTheme.colors.outline
+                        ),
+                        textStyle = Typography.bodyMedium
+                    )
+
+                    when (val state = syncUiState) {
+                        is SyncUiState.Idle -> {
+                            Text(
+                                text = "Pastikan PC dan ponsel terhubung pada jaringan WiFi yang sama dan script server PC telah dijalankan.",
+                                style = Typography.bodySmall.copy(fontSize = 11.5.sp),
+                                color = OtakuTheme.colors.onSurfaceMuted
+                            )
+                        }
+                        is SyncUiState.Checking -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = Dimens.spacingSm),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(Dimens.spacingSm)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = OtakuTheme.colors.primary
+                                )
+                                Text(
+                                    text = "Menghubungi server PC...",
+                                    style = Typography.bodySmall,
+                                    color = OtakuTheme.colors.onSurface
+                                )
+                            }
+                        }
+                        is SyncUiState.ManifestReady -> {
+                            val manifest = state.manifest
+                            if (state.isUpToDate) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(StatusCompleted.copy(alpha = 0.12f))
+                                        .border(1.dp, StatusCompleted.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                        .padding(Dimens.spacingSm)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.sync_catalog_up_to_date, manifest.catalogVersion),
+                                        style = Typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                        color = StatusCompleted
+                                    )
+                                }
+                            } else {
+                                val sizeMb = manifest.coversSizeBytes / (1024f * 1024f)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(OtakuTheme.colors.primary.copy(alpha = 0.08f))
+                                        .border(1.dp, OtakuTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                        .padding(Dimens.spacingSm)
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.sync_update_available,
+                                            manifest.catalogVersion,
+                                            manifest.newRegularCount,
+                                            manifest.newAdultCount,
+                                            manifest.coversCount,
+                                            sizeMb
+                                        ),
+                                        style = Typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                        color = OtakuTheme.colors.onSurface
+                                    )
+                                }
+                            }
+                        }
+                        is SyncUiState.Syncing -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = state.stageText,
+                                    style = Typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = OtakuTheme.colors.primary
+                                )
+                                if (state.progressFraction != null) {
+                                    LinearProgressIndicator(
+                                        progress = { state.progressFraction },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(6.dp)
+                                            .clip(RoundedCornerShape(3.dp)),
+                                        color = OtakuTheme.colors.primary,
+                                        trackColor = OtakuTheme.colors.surfaceVariant
+                                    )
+                                } else {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(6.dp)
+                                            .clip(RoundedCornerShape(3.dp)),
+                                        color = OtakuTheme.colors.primary,
+                                        trackColor = OtakuTheme.colors.surfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        is SyncUiState.Success -> {
+                            val summary = state.summary
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(StatusCompleted.copy(alpha = 0.12f))
+                                    .border(1.dp, StatusCompleted.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                    .padding(Dimens.spacingSm)
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.sync_success_message,
+                                        summary.regularAddedOrUpdated,
+                                        summary.adultAddedOrUpdated,
+                                        summary.coversExtracted
+                                    ),
+                                    style = Typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                    color = StatusCompleted
+                                )
+                            }
+                        }
+                        is SyncUiState.Error -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Error.copy(alpha = 0.12f))
+                                    .border(1.dp, Error.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                    .padding(Dimens.spacingSm)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.sync_error_prefix, state.errorMessage),
+                                    style = Typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                    color = Error
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                when (val state = syncUiState) {
+                    is SyncUiState.Idle, is SyncUiState.Error -> {
+                        Button(
+                            onClick = { viewModel.checkServerUpdate() },
+                            colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.primary, contentColor = Color.White),
+                            shape = CompactButtonShape
+                        ) {
+                            Text(text = stringResource(R.string.sync_check_button), style = Typography.labelMedium)
+                        }
+                    }
+                    is SyncUiState.ManifestReady -> {
+                        if (!state.isUpToDate) {
+                            Button(
+                                onClick = { viewModel.startSync() },
+                                colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.primary, contentColor = Color.White),
+                                shape = CompactButtonShape
+                            ) {
+                                Text(text = stringResource(R.string.sync_start_button), style = Typography.labelMedium)
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    showSyncDialog = false
+                                    viewModel.resetSyncState()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.primary, contentColor = Color.White),
+                                shape = CompactButtonShape
+                            ) {
+                                Text(text = "Tutup", style = Typography.labelMedium)
+                            }
+                        }
+                    }
+                    is SyncUiState.Syncing -> {}
+                    is SyncUiState.Success -> {
+                        Button(
+                            onClick = {
+                                showSyncDialog = false
+                                viewModel.resetSyncState()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = OtakuTheme.colors.primary, contentColor = Color.White),
+                            shape = CompactButtonShape
+                        ) {
+                            Text(text = "Selesai", style = Typography.labelMedium)
+                        }
+                    }
+                    is SyncUiState.Checking -> {}
+                }
+            },
+            dismissButton = {
+                if (syncUiState !is SyncUiState.Syncing) {
+                    TextButton(
+                        onClick = {
+                            showSyncDialog = false
+                            viewModel.resetSyncState()
+                        }
+                    ) {
+                        Text(text = "Batal", color = OtakuTheme.colors.onSurfaceMuted)
+                    }
                 }
             }
         )

@@ -3,6 +3,7 @@ package com.example.otakulist.data.local.dao
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.RawQuery
+import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import com.example.otakulist.data.local.entity.AdultAnimeEntity
 import kotlinx.coroutines.flow.Flow
@@ -48,4 +49,10 @@ interface AdultAnimeDao {
 
     @Query("SELECT id FROM adult_anime")
     suspend fun getAllAdultIds(): List<Int>
+
+    @Upsert
+    suspend fun upsertAll(adultAnimeList: List<AdultAnimeEntity>)
+
+    @Upsert
+    suspend fun upsert(adultAnime: AdultAnimeEntity)
 }

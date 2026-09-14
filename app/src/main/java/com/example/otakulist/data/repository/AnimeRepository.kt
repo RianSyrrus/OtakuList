@@ -1,5 +1,6 @@
 package com.example.otakulist.data.repository
 
+import android.content.Context
 import androidx.room.withTransaction
 import androidx.sqlite.db.SimpleSQLiteQuery
 import com.example.otakulist.data.local.AppDatabase
@@ -15,8 +16,14 @@ import com.example.otakulist.data.local.entity.UserWatchlistEntity
 import com.example.otakulist.data.local.entity.WatchlistWithAnime
 import com.example.otakulist.data.local.entity.toAnimeEntity
 import com.example.otakulist.data.model.AnimeSortOrder
+import com.example.otakulist.data.model.SyncManifestDto
+import com.example.otakulist.data.model.SyncProgress
+import com.example.otakulist.data.model.SyncSummary
 import com.example.otakulist.data.model.WatchlistBackupModel
 import com.example.otakulist.data.model.WatchlistStatus
+import com.example.otakulist.data.model.toAdultAnimeEntity
+import com.example.otakulist.data.model.toAnimeEntity
+import com.example.otakulist.data.remote.LocalSyncClient
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
@@ -27,6 +34,8 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import java.io.File
 
 data class StatsModel(
     val totalWatchedTitles: Int = 0,
@@ -48,6 +57,7 @@ data class StatsModel(
 )
 
 class AnimeRepository(
+    private val context: Context,
     private val database: AppDatabase,
     private val animeDao: AnimeDao,
     private val watchlistDao: WatchlistDao,
@@ -56,6 +66,7 @@ class AnimeRepository(
     val settingsManager: AppSettingsManager,
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
 ) {
+    private val syncClient: LocalSyncClient by lazy { LocalSyncClient(gson) }
 
     fun getAllAnime(isAdult: Boolean = false): Flow<List<AnimeEntity>> = 
         if (isAdult) adultAnimeDao.getAllAdultAnime().map { list -> list.map { it.toAnimeEntity() } }
@@ -516,6 +527,81 @@ class AnimeRepository(
                     watchlistAdultDao.clearAll()
                 }
             }
+        }
+    }
+
+    suspend fun checkLocalSyncManifest(serverHost: String): Result<SyncManifestDto> {
+        return syncClient.fetchManifest(serverHost)
+    }
+
+    suspend fun syncFromLocalServer(
+        serverHost: String,
+        onProgress: (SyncProgress) -> Unit = {}
+    ): Result<SyncSummary> = withContext(Dispatchers.IO) {
+        runCatching {
+            onProgress(SyncProgress.Connecting)
+            val manifestResult = syncClient.fetchManifest(serverHost)
+            val manifest = manifestResult.getOrThrow()
+
+            onProgress(SyncProgress.CheckingManifest)
+            onProgress(SyncProgress.DownloadingPatch("Mengunduh metadata anime..."))
+            val patchResult = syncClient.fetchPatch(serverHost)
+            val patch = patchResult.getOrThrow()
+
+            var coversExtracted = 0
+            if (manifest.coversCount > 0 && manifest.coversSizeBytes > 0L) {
+                onProgress(SyncProgress.DownloadingCovers(0f))
+                val cacheZip = File(context.cacheDir, "covers_patch_temp.zip")
+                try {
+                    val downloadResult = syncClient.downloadCoversZip(
+                        host = serverHost,
+                        destinationFile = cacheZip,
+                        expectedSizeBytes = manifest.coversSizeBytes,
+                        onProgress = { percent ->
+                            onProgress(SyncProgress.DownloadingCovers(percent))
+                        }
+                    )
+                    downloadResult.getOrThrow()
+
+                    onProgress(SyncProgress.ExtractingCovers(0, manifest.coversCount))
+                    val extractResult = syncClient.extractCoversZip(
+                        zipFile = cacheZip,
+                        targetFilesDir = context.filesDir,
+                        onProgress = { current, total ->
+                            onProgress(SyncProgress.ExtractingCovers(current, total))
+                        }
+                    )
+                    coversExtracted = extractResult.getOrThrow()
+                } finally {
+                    if (cacheZip.exists()) {
+                        cacheZip.delete()
+                    }
+                }
+            }
+
+            onProgress(SyncProgress.WritingDatabase)
+            val regularEntities = patch.regularAnime.map { it.toAnimeEntity() }
+            val adultEntities = patch.adultAnime.map { it.toAdultAnimeEntity() }
+
+            database.withTransaction {
+                if (regularEntities.isNotEmpty()) {
+                    animeDao.upsertAll(regularEntities)
+                }
+                if (adultEntities.isNotEmpty()) {
+                    adultAnimeDao.upsertAll(adultEntities)
+                }
+            }
+
+            settingsManager.setCatalogVersion(patch.version)
+            settingsManager.setLastSyncTimestamp(System.currentTimeMillis())
+
+            onProgress(SyncProgress.Finished)
+            SyncSummary(
+                catalogVersion = patch.version,
+                regularAddedOrUpdated = regularEntities.size,
+                adultAddedOrUpdated = adultEntities.size,
+                coversExtracted = coversExtracted
+            )
         }
     }
 }

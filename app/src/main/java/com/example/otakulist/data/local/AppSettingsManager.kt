@@ -45,10 +45,45 @@ class AppSettingsManager(context: Context) {
         _accentColorHex.value = hex
     }
 
+    private val _syncServerHost = MutableStateFlow(
+        prefs.getString(KEY_SYNC_SERVER_HOST, "192.168.1.15:8080") ?: "192.168.1.15:8080"
+    )
+    val syncServerHost: StateFlow<String> = _syncServerHost.asStateFlow()
+
+    private val _catalogVersion = MutableStateFlow(
+        prefs.getString(KEY_CATALOG_VERSION, "1.0.0") ?: "1.0.0"
+    )
+    val catalogVersion: StateFlow<String> = _catalogVersion.asStateFlow()
+
+    private val _lastSyncTimestamp = MutableStateFlow(
+        prefs.getLong(KEY_LAST_SYNC_TIMESTAMP, 0L)
+    )
+    val lastSyncTimestamp: StateFlow<Long> = _lastSyncTimestamp.asStateFlow()
+
+    fun setSyncServerHost(host: String) {
+        val sanitized = host.trim()
+        prefs.edit().putString(KEY_SYNC_SERVER_HOST, sanitized).apply()
+        _syncServerHost.value = sanitized
+    }
+
+    fun setCatalogVersion(version: String) {
+        val sanitized = version.trim()
+        prefs.edit().putString(KEY_CATALOG_VERSION, sanitized).apply()
+        _catalogVersion.value = sanitized
+    }
+
+    fun setLastSyncTimestamp(timestamp: Long) {
+        prefs.edit().putLong(KEY_LAST_SYNC_TIMESTAMP, timestamp).apply()
+        _lastSyncTimestamp.value = timestamp
+    }
+
     companion object {
         private const val KEY_IS_ADULT_ENABLED = "is_adult_enabled"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_ACCENT_COLOR_HEX = "accent_color_hex"
+        private const val KEY_SYNC_SERVER_HOST = "sync_server_host"
+        private const val KEY_CATALOG_VERSION = "catalog_version"
+        private const val KEY_LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
 
         @Volatile
         private var instance: AppSettingsManager? = null

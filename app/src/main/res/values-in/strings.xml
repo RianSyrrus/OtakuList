@@ -8,4 +8,15 @@
     <string name="backup_file_saved">Berkas cadangan berhasil disimpan!</string>
     <string name="backup_file_save_failed">Gagal menyimpan berkas cadangan.</string>
     <string name="backup_file_read_failed">Gagal membaca berkas JSON yang dipilih.</string>
+    <string name="sync_wifi_title">Sinkronisasi WiFi Lokal</string>
+    <string name="sync_wifi_subtitle">Perbarui katalog anime langsung dari PC Anda</string>
+    <string name="sync_dialog_title">Sinkronisasi Katalog PC</string>
+    <string name="sync_server_ip_label">Alamat Server PC</string>
+    <string name="sync_server_ip_placeholder">contoh: 192.168.1.15:8080</string>
+    <string name="sync_check_button">Periksa Pembaruan</string>
+    <string name="sync_start_button">Mulai Sinkronisasi</string>
+    <string name="sync_catalog_up_to_date">Katalog Anda sudah paling mutakhir (%1$s).</string>
+    <string name="sync_update_available">Pembaruan tersedia (%1$s): %2$d reguler, %3$d dewasa, %4$d cover (%5$.1f MB).</string>
+    <string name="sync_success_message">Sinkronisasi selesai! Berhasil memperbarui %1$d reguler, %2$d dewasa, dan %3$d cover.</string>
+    <string name="sync_error_prefix">Sinkronisasi gagal: %1$s</string>
 </resources>

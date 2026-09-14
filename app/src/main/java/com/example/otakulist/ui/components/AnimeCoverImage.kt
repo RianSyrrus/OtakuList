@@ -33,18 +33,23 @@ fun AnimeCoverImage(
 ) {
     val context = LocalContext.current
     val folder = if (isAdult) "covers_adult" else "covers"
-    val imagePath = androidx.compose.runtime.remember(coverFile, isAdult) {
+    val imageData = androidx.compose.runtime.remember(coverFile, isAdult) {
         if (!coverFile.isNullOrBlank()) {
             val baseName = coverFile.trim().substringBeforeLast(".")
-            "file:///android_asset/$folder/$baseName.webp"
+            val internalFile = java.io.File(context.filesDir, "$folder/$baseName.webp")
+            if (internalFile.exists() && internalFile.length() > 0) {
+                internalFile
+            } else {
+                "file:///android_asset/$folder/$baseName.webp"
+            }
         } else {
             null
         }
     }
 
-    val request = androidx.compose.runtime.remember(imagePath) {
+    val request = androidx.compose.runtime.remember(imageData) {
         ImageRequest.Builder(context)
-            .data(imagePath)
+            .data(imageData)
             .crossfade(true)
             .build()
     }

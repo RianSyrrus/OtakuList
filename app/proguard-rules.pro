@@ -19,3 +19,9 @@
 
 # Coil
 -keep class coil.** { *; }
+
+# Sync Models & Remote Client
+-keep class com.example.otakulist.data.model.SyncManifestDto { *; }
+-keep class com.example.otakulist.data.model.CatalogPatchDto { *; }
+-keep class com.example.otakulist.data.model.AnimeEntityPayload { *; }
+-keep class com.example.otakulist.data.remote.** { *; }
