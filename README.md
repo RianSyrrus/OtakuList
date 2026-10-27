@@ -8,9 +8,9 @@ Aplikasi katalog dan pencatat daftar tontonan (*watchlist*) anime berbasis Andro
 | :---: | :---: | :---: | :---: |
 | <img src="image/halamanUtama.png" width="210" alt="Halaman Utama" /> | <img src="image/halamanUtamaKosong.png" width="210" alt="Halaman Utama Kosong" /> | <img src="image/halamanList.png" width="210" alt="Halaman Katalog" /> | <img src="image/halamanListGenre.png" width="210" alt="Filter Genre" /> |
 
-| Detail Anime | Statistik Tontonan | Pengaturan & Sinkronisasi |
-| :---: | :---: | :---: |
-| <img src="image/halamanDetail.png" width="210" alt="Detail Anime" /> | <img src="image/halamanStatistik.png" width="210" alt="Halaman Statistik" /> | <img src="image/pengaturan.png" width="210" alt="Halaman Pengaturan" /> |
+| Filter Musim | Detail Anime | Statistik Tontonan | Pengaturan & Sinkronisasi |
+| :---: | :---: | :---: | :---: |
+| <img src="image/halamanListMusim.png" width="210" alt="Filter Musim" /> | <img src="image/halamanDetail.png" width="210" alt="Detail Anime" /> | <img src="image/halamanStatistik.png" width="210" alt="Halaman Statistik" /> | <img src="image/pengaturan.png" width="210" alt="Halaman Pengaturan" /> |
 
 ## Struktur Repository
 
