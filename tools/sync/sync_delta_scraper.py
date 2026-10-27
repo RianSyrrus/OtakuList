@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import shutil
 import sqlite3
 import asyncio
 import logging
@@ -44,6 +45,11 @@ def ensure_directories():
     os.makedirs(COVERS_DIR, exist_ok=True)
     os.makedirs(COVERS_ADULT_DIR, exist_ok=True)
     os.makedirs(PATCH_DIR, exist_ok=True)
+    if not os.path.exists(DB_PATH):
+        android_db = os.path.join(ANDROID_ROOT, 'app', 'src', 'main', 'assets', 'databases', 'anime_catalog.db')
+        if os.path.exists(android_db):
+            shutil.copy2(android_db, DB_PATH)
+            logger.info(f'Initialized local catalog database from Android assets: {DB_PATH}')
 
 
 async def translate_text_google(client: httpx.AsyncClient, text: str) -> str:

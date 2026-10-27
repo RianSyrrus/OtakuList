@@ -7,12 +7,11 @@ Aplikasi katalog & pencatat daftar tontonan (*watchlist*) anime berbasis Android
 ```text
 OtakuList/
 ├── android/          # Aplikasi Android Native (Kotlin, Jetpack Compose, Room SQLite)
-├── tools/            # Scraper Katalog (OtakOtaku & MyAnimeList) & Server Sinkronisasi WiFi
-│   ├── scrapers/     # Modul ekstraktor katalog, karakter, kutipan, dan artikel
-│   ├── sync/         # Delta scraper, generator paket patch, dan HTTP Sync Server (Port 8080)
-│   ├── pipelines/    # Pipeline dump katalog penuh dan ekspor database Room
-│   └── scripts/      # Batch runner utilitas pemeliharaan katalog
-└── docs/             # Dokumentasi arsitektur & PRD
+└── tools/            # Scraper Katalog (OtakOtaku & MyAnimeList) & Server Sinkronisasi WiFi
+    ├── scrapers/     # Modul ekstraktor katalog, karakter, kutipan, dan artikel
+    ├── sync/         # Delta scraper, generator paket patch, dan HTTP Sync Server (Port 8080)
+    ├── pipelines/    # Pipeline dump katalog penuh dan ekspor database Room
+    └── scripts/      # Batch runner utilitas pemeliharaan katalog
 ```
 
 ## Panduan Singkat

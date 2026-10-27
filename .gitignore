@@ -49,9 +49,11 @@ env/
 tools/data/
 
 # =====================================================================
-# 4. PERSONAL WATCHLIST BACKUPS & TEMPORARY DEBUG FILES
+# 4. INTERNAL SPECS, DOCS, PERSONAL BACKUPS & TEMPORARY FILES
 # =====================================================================
-docs/user_watchlist_backup*.json
+.specify/
+docs/
+specs/
 tools/tools/user_watchlist_raw.txt
 check*
 temp_*

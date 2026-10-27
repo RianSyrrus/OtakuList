@@ -33,10 +33,12 @@ android {
         abortOnError = false
     }
 
+    val keyStoreFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+    val hasReleaseKeystore = keyStoreFile != null && keyStoreFile.exists()
+
     signingConfigs {
         create("release") {
-            val keyStoreFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
-            if (keyStoreFile != null && keyStoreFile.exists()) {
+            if (hasReleaseKeystore && keyStoreFile != null) {
                 storeFile = keyStoreFile
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
@@ -47,10 +49,18 @@ android {
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
