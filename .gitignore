@@ -1,19 +1,57 @@
+# =====================================================================
+# 1. SECURITY, SIGNING KEYS & CREDENTIALS (NEVER COMMIT TO PUBLIC REPO)
+# =====================================================================
+*.jks
+*.keystore
+*.p12
+*.key
+*.pem
+keystore.properties
+**/keystore.properties
+.env
+.env.*
+*.env
+**/secrets.xml
+**/google-services.json
+
+# =====================================================================
+# 2. ANDROID, GRADLE & IDE ARTIFACTS
+# =====================================================================
 *.iml
 .gradle/
+**/build/
 local.properties
+**/local.properties
 .idea/
+**/.idea/
 .kotlin/
+**/.kotlin/
 .DS_Store
-build/
-/build
-app/build/
-/captures
-.externalNativeBuild
-.cxx
-
-# Temporary debug files
-check*
-temp_*
+captures/
+.externalNativeBuild/
+.cxx/
 *.apk
 *.aab
+*.ap_
+*.dex
 
+# =====================================================================
+# 3. PYTHON SCRAPER & SYNC TOOLS (tools/)
+# =====================================================================
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+tools/data/
+
+# =====================================================================
+# 4. PERSONAL WATCHLIST BACKUPS & TEMPORARY DEBUG FILES
+# =====================================================================
+docs/user_watchlist_backup*.json
+tools/tools/user_watchlist_raw.txt
+check*
+temp_*
