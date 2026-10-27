@@ -35,6 +35,9 @@ interface AnimeDao {
     @Query("SELECT COUNT(*) FROM anime")
     suspend fun getTotalAnimeCount(): Int
 
+    @Query("SELECT COUNT(*) FROM anime")
+    fun observeTotalAnimeCount(): Flow<Int>
+
     @Query("SELECT DISTINCT season FROM anime WHERE season IS NOT NULL AND season != '' ORDER BY season DESC")
     fun getAllSeasons(): Flow<List<String>>
 

@@ -123,6 +123,17 @@ fun SettingsScreen(
     val accentColorHex by viewModel.accentColorHex.collectAsState()
     val regularWatchlistCount by viewModel.regularWatchlistCount.collectAsState()
     val adultWatchlistCount by viewModel.adultWatchlistCount.collectAsState()
+    val totalRegularCount by viewModel.totalRegularCount.collectAsState()
+    val totalAdultCount by viewModel.totalAdultCount.collectAsState()
+
+    val numberFormat = remember { java.text.NumberFormat.getInstance(java.util.Locale("id", "ID")) }
+    val formattedRegular = remember(totalRegularCount) { if (totalRegularCount > 0) numberFormat.format(totalRegularCount) else "3.360" }
+    val formattedAdult = remember(totalAdultCount) { if (totalAdultCount > 0) numberFormat.format(totalAdultCount) else "1.637" }
+    val formattedTotalCovers = remember(totalRegularCount, totalAdultCount, isAdultContentEnabled) {
+        val sum = if (isAdultContentEnabled) totalRegularCount + totalAdultCount else totalRegularCount
+        if (sum > 0) numberFormat.format(sum) else if (isAdultContentEnabled) "4.997" else "3.360"
+    }
+
     val exportJson by viewModel.exportJson.collectAsState()
     val importMessage by viewModel.importMessage.collectAsState()
     val actionFeedback by viewModel.actionFeedback.collectAsState()
@@ -278,9 +289,9 @@ fun SettingsScreen(
 
                         Text(
                             text = if (isAdultContentEnabled) {
-                                "3.360 Reguler · 1.637 Dewasa"
+                                "$formattedRegular Reguler · $formattedAdult Dewasa"
                             } else {
-                                "3.360 Judul Anime Tersedia"
+                                "$formattedRegular Judul Anime Tersedia"
                             },
                             style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
                             color = OtakuTheme.colors.onSurface
@@ -604,7 +615,7 @@ fun SettingsScreen(
                 SettingsInfoRow(
                     icon = Icons.Default.Dataset,
                     title = "Basis Data Katalog",
-                    value = if (isAdultContentEnabled) "3.360 Reguler + 1.637 Dewasa" else "3.360 Judul Reguler"
+                    value = if (isAdultContentEnabled) "$formattedRegular Reguler + $formattedAdult Dewasa" else "$formattedRegular Judul Reguler"
                 )
 
                 HorizontalDivider(
@@ -616,7 +627,7 @@ fun SettingsScreen(
                 SettingsInfoRow(
                     icon = Icons.Default.Image,
                     title = "Aset Sampul Poster",
-                    value = if (isAdultContentEnabled) "4.997 Berkas .webp (Lokal)" else "3.360 Berkas .webp (Lokal)"
+                    value = "$formattedTotalCovers Berkas .webp (Lokal)"
                 )
 
                 HorizontalDivider(

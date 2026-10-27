@@ -22,8 +22,8 @@ android {
         applicationId = "com.example.otakulist"
         minSdk = 26
         targetSdk = 37
-        versionCode = 24
-        versionName = "1.6.0"
+        versionCode = 27
+        versionName = "1.6.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

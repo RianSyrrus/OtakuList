@@ -203,6 +203,10 @@ class AnimeRepository(
     fun getAllStatuses(isAdult: Boolean = false): Flow<List<String>> = 
         if (isAdult) adultAnimeDao.getAllStatuses() else animeDao.getAllStatuses()
 
+    fun observeTotalAnimeCount(): Flow<Int> = animeDao.observeTotalAnimeCount()
+
+    fun observeTotalAdultAnimeCount(): Flow<Int> = adultAnimeDao.observeTotalAdultAnimeCount()
+
     fun getWatchlistByStatus(status: WatchlistStatus, isAdult: Boolean = false): Flow<List<WatchlistWithAnime>> {
         return if (isAdult) {
             watchlistAdultDao.getWatchlistByStatus(status.value).map { list -> list.map { it.toWatchlistWithAnime() } }

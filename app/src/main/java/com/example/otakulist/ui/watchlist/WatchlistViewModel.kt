@@ -50,8 +50,6 @@ class WatchlistViewModel(
     private val _expandedSeasons = MutableStateFlow<Set<String>>(emptySet())
     val expandedSeasons: StateFlow<Set<String>> = _expandedSeasons.asStateFlow()
 
-    private var hasAutoSelectedInitialTab = false
-
     val regularCount: StateFlow<Int> = repository.getAllWatchlist(isAdult = false)
         .map { it.size }
         .stateIn(
@@ -70,14 +68,9 @@ class WatchlistViewModel(
 
     init {
         viewModelScope.launch {
-            combine(regularCount, adultCount, isAdultContentEnabled) { regular, adult, enabled ->
-                Triple(regular, adult, enabled)
-            }.collect { (regular, adult, enabled) ->
+            isAdultContentEnabled.collect { enabled ->
                 if (!enabled && _selectedCatalogType.value == WatchlistCatalogType.ADULT) {
                     _selectedCatalogType.value = WatchlistCatalogType.REGULAR
-                } else if (enabled && !hasAutoSelectedInitialTab && regular == 0 && adult > 0) {
-                    hasAutoSelectedInitialTab = true
-                    _selectedCatalogType.value = WatchlistCatalogType.ADULT
                 }
             }
         }

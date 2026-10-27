@@ -57,6 +57,20 @@ class SettingsViewModel(
             initialValue = 0
         )
 
+    val totalRegularCount: StateFlow<Int> = repository.observeTotalAnimeCount()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 3360
+        )
+
+    val totalAdultCount: StateFlow<Int> = repository.observeTotalAdultAnimeCount()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 1637
+        )
+
     private val _exportJson = MutableStateFlow<String?>(null)
     val exportJson: StateFlow<String?> = _exportJson.asStateFlow()
 
@@ -83,8 +97,10 @@ class SettingsViewModel(
             val result = repository.checkLocalSyncManifest(host)
             result.fold(
                 onSuccess = { manifest ->
-                    val isUpToDate = manifest.catalogVersion == catalogVersion.value &&
-                            manifest.newRegularCount == 0 && manifest.newAdultCount == 0
+                    val isCurrentVersionInstalled = manifest.catalogVersion.isNotBlank() &&
+                            manifest.catalogVersion == catalogVersion.value
+                    val hasNoNewData = manifest.newRegularCount == 0 && manifest.newAdultCount == 0
+                    val isUpToDate = isCurrentVersionInstalled || hasNoNewData
                     _syncUiState.value = SyncUiState.ManifestReady(manifest, isUpToDate)
                 },
                 onFailure = { error ->
